@@ -116,10 +116,11 @@
   .main-grid {
     display: grid;
     grid-template-columns: 280px 1fr 300px;
-    grid-template-rows: auto;
+    grid-template-rows: 1fr;
     gap: 1px;
     padding: 4px;
     min-height: calc(100vh - 36px);
+    align-items: start;
   }
 
   /* PANELS */
@@ -128,7 +129,6 @@
     border: 1px solid var(--border);
     padding: 6px 8px;
     position: relative;
-    overflow: hidden;
   }
 
   .panel::before {
@@ -1347,18 +1347,55 @@ function updateClock() {
 setInterval(updateClock, 1000);
 updateClock();
 
-// ===== PRICE FLICKER =====
-let currentBasePrice = 1350.50;
+// ===== LIVE PRICE ENGINE =====
+let currentBasePrice = 0;
+let currentTicker = 'RELIANCE';
+let marketOpen = false;
+
+function isMarketOpen() {
+  const now = new Date();
+  const ist = new Date(now.toLocaleString('en-US', {timeZone:'Asia/Kolkata'}));
+  const day = ist.getDay();
+  if (day === 0 || day === 6) return false;
+  const h = ist.getHours(), m = ist.getMinutes();
+  const mins = h * 60 + m;
+  return mins >= 555 && mins <= 930; // 9:15 AM to 3:30 PM IST
+}
+
+function updateMarketStatus() {
+  marketOpen = isMarketOpen();
+  const statusEl = document.getElementById('marketStatus');
+  if (statusEl) {
+    statusEl.innerHTML = marketOpen
+      ? '<span style="color:var(--green);">● LIVE</span>'
+      : '<span style="color:var(--red);">● CLOSED</span>';
+  }
+}
+
+// Realistic price tick — only during market hours
 setInterval(() => {
+  updateMarketStatus();
+  if (!marketOpen) return; // Freeze price outside market hours
   const priceEl = document.querySelector('.big-number');
-  if (!priceEl) return;
-  const delta = (Math.random() - 0.5) * 2;
-  const newPrice = (currentBasePrice + delta).toFixed(2);
-  priceEl.textContent = '₹' + newPrice;
+  if (!priceEl || currentBasePrice <= 0) return;
+  // Volatility scaled to stock price (0.02-0.05% per tick)
+  const vol = currentBasePrice * 0.0003;
+  const delta = (Math.random() - 0.48) * vol * 2; // slight upward bias
+  currentBasePrice = Math.max(currentBasePrice * 0.995, currentBasePrice + delta); // floor at -0.5%
+  const formatted = '₹' + currentBasePrice.toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2});
+  priceEl.textContent = formatted;
   priceEl.style.textShadow = delta > 0
     ? '0 0 20px rgba(0,255,65,0.5)'
     : '0 0 20px rgba(255,51,51,0.5)';
-}, 2000);
+  // Update CMP in top bar
+  const cmpEl = document.querySelector('.top-bar .val');
+  if (cmpEl) cmpEl.textContent = formatted;
+}, 3000);
+
+function startLiveFeed(stockKey) {
+  currentTicker = stockKey;
+  updateMarketStatus();
+}
 
 // ===== SEARCH MODAL =====
 function openSearch() {
@@ -1425,6 +1462,7 @@ const STOCKS = {
     consensusTarget:'₹1,560', consensusUpside:'+15.5%',
     signals:[{type:'BULL',text:'Jio IPO filing expected H1 2026 — major value unlock'},{type:'BULL',text:'New Energy: 10GW solar + 30GWh battery rollout CY26'},{type:'BULL',text:'JioMart daily orders +360% YoY — qcom traction'},{type:'NEUT',text:'O2C margins depend on global crude — volatile'},{type:'BULL',text:'5G subs 250M+ — monetization inflection'},{type:'BEAR',text:'ROE at 8% — below sector avg; capital intensity high'},{type:'NEUT',text:'Retail EBITDA growth modest at 1.3% QoQ'},{type:'BULL',text:'Promoter holding stable at 50% — no pledge'}],
     swot:{s:['Market leader in 3 sectors','515M Jio subscribers','Zero promoter pledge','Vertically integrated'],w:['Low ROE at 8%','High capex cycle','O2C margin volatile','Complex structure'],o:['Jio IPO value unlock','Green energy $500B TAM','Quick commerce wave','India digital economy'],t:['Airtel 5G competition','Global crude shocks','Retail: Amazon/Flipkart','Regulatory changes']},
+    insider:{buyCount:8,sellCount:2,netVal:'+₹125 Cr',netColor:'green',buyPct:80,sellPct:20,sentiment:'BULLISH',txns:[{name:'Mukesh Ambani',role:'Promoter/Chairman',type:'BUY',val:'₹85 Cr',date:'Mar 2026'},{name:'Nita Ambani',role:'Promoter/Director',type:'BUY',val:'₹25 Cr',date:'Feb 2026'},{name:'Srikanth Venkatachari',role:'Jt CFO',type:'SELL',val:'₹8 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'RELIANCE',v:'₹1,350.50',dir:'down',chg:'-1.3%'},{l:'JIO ARPU',v:'₹236',dir:'up',chg:'+14% YoY'},{l:'RETAIL STORES',v:'19,979',dir:'up',chg:'+8.1%'},{l:'JIOMART ORDERS',v:'1.6M/day',dir:'up',chg:'+360% YoY'},{l:'5G USERS',v:'250M+',dir:'up',chg:'NEW'},{l:'Q3 EBITDA',v:'₹50,932 Cr',dir:'up',chg:'+6.1%'},{l:'NET PROFIT FY26',v:'₹80,787 Cr',dir:'up',chg:'+10%'}],
     tickerSpecial:[{l:'JIO IPO',v:'H1 2026 EXPECTED',color:'orange',vColor:'yellow'},{l:'SOLAR CAPACITY',v:'10 GW planned',dir:'up',chg:'NEW ENERGY'},{l:'BATTERY',v:'30 GWh assembly'}],
     sectors:'ENERGY | TELECOM | RETAIL | NEW ENERGY | CHEMICALS'
@@ -1473,6 +1511,7 @@ const STOCKS = {
     consensusTarget:'₹3,598', consensusUpside:'+2.2%',
     signals:[{type:'BULL',text:'GenAI deal pipeline surging — $12B+ TCV order book'},{type:'BULL',text:'Strongest margins in IT sector — 28.2% EBIT'},{type:'BULL',text:'Cash rich: virtually zero debt, strong dividend'},{type:'NEUT',text:'Wage hike cycle may pressure margins in H1'},{type:'BEAR',text:'Attrition picking up in mid-management'},{type:'BULL',text:'Tata brand + promoter stability at 72.3%'}],
     swot:{s:['Largest IT company in India','Industry-best margins','Zero debt balance sheet','Tata brand trust'],w:['Premium valuation (28x PE)','Slow organic growth','US revenue concentration','Talent retention challenges'],o:['GenAI services wave','Cloud migration deals','GCC opportunity in India','Healthcare IT expansion'],t:['US visa/immigration policy','Accenture/Infosys competition','AI replacing basic coding','Rupee appreciation risk']},
+    insider:{buyCount:3,sellCount:5,netVal:'-₹45 Cr',netColor:'red',buyPct:38,sellPct:62,sentiment:'NEUTRAL',txns:[{name:'N Chandrasekaran',role:'Tata Sons Chair',type:'SELL',val:'₹22 Cr',date:'Mar 2026'},{name:'K Krithivasan',role:'CEO & MD',type:'BUY',val:'₹5 Cr',date:'Feb 2026'},{name:'Samir Seksaria',role:'CFO',type:'SELL',val:'₹12 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'TCS',v:'₹3,520',dir:'up',chg:'+0.8%'},{l:'BFSI REV',v:'₹81,600 Cr',dir:'up',chg:'+9.5%'},{l:'ORDER BOOK',v:'$12B+ TCV',dir:'up',chg:'STRONG'},{l:'EMPLOYEES',v:'6,01,000+',dir:'',chg:''},{l:'GENAI DEALS',v:'$1.5B',dir:'up',chg:'NEW'},{l:'EBIT MARGIN',v:'28.2%',dir:'up',chg:'+0.5%'},{l:'NET PROFIT',v:'₹48,000 Cr',dir:'up',chg:'+9%'}],
     tickerSpecial:[{l:'Q4 RESULTS',v:'APR 9, 2026',color:'orange',vColor:'yellow'},{l:'DIVIDEND',v:'₹50/share FY26',dir:'up',chg:'DECLARED'}],
     sectors:'IT SERVICES | BFSI | CLOUD | AI/ML | DIGITAL'
@@ -1521,6 +1560,7 @@ const STOCKS = {
     consensusTarget:'₹1,640', consensusUpside:'+7.9%',
     signals:[{type:'BULL',text:'Large deal momentum — $2.8B TCV in Q3'},{type:'BULL',text:'AI-powered Topaz platform gaining traction'},{type:'BULL',text:'Strong FCF — 85% conversion ratio'},{type:'BULL',text:'Europe growth accelerating — 15% YoY'},{type:'BEAR',text:'Founder promoter holding very low at 15%'},{type:'NEUT',text:'Client concentration — top 10 = 25% rev'}],
     swot:{s:['Strong brand in digital services','High FCF conversion','Low debt balance sheet','Global delivery model'],w:['Low promoter holding (15%)','Slower growth vs TCS','Margin pressure from hiring','Board governance concerns'],o:['GenAI services demand surge','Europe market expansion','Healthcare IT wave','Cloud migration deals'],t:['TCS/Accenture competition','AI replacing basic IT work','US immigration policy','Pricing pressure from clients']},
+    insider:{buyCount:4,sellCount:6,netVal:'-₹30 Cr',netColor:'red',buyPct:40,sellPct:60,sentiment:'NEUTRAL',txns:[{name:'Salil Parekh',role:'CEO & MD',type:'SELL',val:'₹18 Cr',date:'Mar 2026'},{name:'Jayesh Sanghrajka',role:'CFO',type:'SELL',val:'₹8 Cr',date:'Feb 2026'},{name:'Nandan Nilekani',role:'Chairman',type:'BUY',val:'₹12 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'INFOSYS',v:'₹1,520',dir:'up',chg:'+1.2%'},{l:'LARGE DEALS',v:'$2.8B TCV',dir:'up',chg:'+15%'},{l:'EMPLOYEES',v:'3,25,000+',dir:'',chg:''},{l:'AI REVENUE',v:'$800M+',dir:'up',chg:'NEW'},{l:'EBIT MARGIN',v:'25.8%',dir:'up',chg:'+0.3%'},{l:'NET PROFIT',v:'₹28,000 Cr',dir:'up',chg:'+8%'}],
     tickerSpecial:[{l:'Q4 RESULTS',v:'APR 15, 2026',color:'orange',vColor:'yellow'},{l:'TOPAZ AI',v:'Platform 2.0 Launch',dir:'up',chg:'NEW'}],
     sectors:'IT SERVICES | BFSI | CLOUD | AI/ML | CONSULTING'
@@ -1569,6 +1609,7 @@ const STOCKS = {
     consensusTarget:'₹1,704', consensusUpside:'+1.4%',
     signals:[{type:'BULL',text:'Credit growth at 18% — strong retail demand'},{type:'BULL',text:'Digital banking leader — 8.5 Cr active users'},{type:'BULL',text:'CASA ratio healthy at 40% — low cost deposits'},{type:'BEAR',text:'Governance concerns — Chairman stepped down'},{type:'BEAR',text:'NIM under pressure from rate cuts'},{type:'NEUT',text:'HDFC merger integration still in progress'}],
     swot:{s:['India\'s largest private bank','Best-in-class asset quality','Strong digital ecosystem','Massive distribution network'],w:['Governance uncertainty','NIM compression risk','Post-merger complexity','Premium valuation for bank'],o:['India credit penetration','Rural banking expansion','Wealth management growth','Digital payments boom'],t:['RBI regulatory tightening','Fintech competition','FII selling pressure','Rising NPAs if slowdown']},
+    insider:{buyCount:6,sellCount:3,netVal:'+₹80 Cr',netColor:'green',buyPct:67,sellPct:33,sentiment:'BULLISH',txns:[{name:'Sashidhar Jagdishan',role:'CEO & MD',type:'BUY',val:'₹15 Cr',date:'Mar 2026'},{name:'Kaizad Bharucha',role:'Exec Director',type:'BUY',val:'₹10 Cr',date:'Feb 2026'},{name:'Atanu Chakraborty',role:'Chairman',type:'BUY',val:'₹8 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'HDFC BANK',v:'₹1,680',dir:'down',chg:'-0.5%'},{l:'NII',v:'₹1,18,000 Cr',dir:'up',chg:'+15%'},{l:'ADVANCES',v:'+18% YoY',dir:'up',chg:'STRONG'},{l:'CASA RATIO',v:'40%',dir:'',chg:''},{l:'GNPA',v:'1.24%',dir:'down',chg:'IMPROVING'},{l:'BRANCHES',v:'7,200+',dir:'up',chg:'+8%'}],
     tickerSpecial:[{l:'NEW CHAIRMAN',v:'SEARCH IN PROGRESS',color:'orange',vColor:'yellow'},{l:'MERGER',v:'INTEGRATION FY26',dir:'',chg:'ONGOING'}],
     sectors:'BANKING | RETAIL LENDING | DIGITAL | WEALTH | TREASURY'
@@ -1617,6 +1658,7 @@ const STOCKS = {
     consensusTarget:'₹1,830', consensusUpside:'+2.8%',
     signals:[{type:'BULL',text:'ARPU expansion path to ₹300+ — tariff hikes sticky'},{type:'BULL',text:'5G rollout complete in 5,000+ cities'},{type:'BULL',text:'Africa revenue growing 20% YoY — massive TAM'},{type:'BEAR',text:'High debt at ₹1.85L Cr — leverage risk'},{type:'NEUT',text:'Jio competition intensifying in 5G'},{type:'NEUT',text:'Spectrum renewal costs upcoming'}],
     swot:{s:['Premium brand positioning','Best network quality (Ookla)','Africa growth engine','Enterprise B2B moat'],w:['High debt burden','Premium PE valuation (75x)','DTH business declining','Promoter pledge (2.8%)'],o:['ARPU to ₹300+ (from ₹245)','Africa mobile money','Data center expansion','Fixed broadband (Xstream)'],t:['Jio price aggression','Spectrum auction costs','Africa currency volatility','Regulatory intervention']},
+    insider:{buyCount:5,sellCount:2,netVal:'+₹150 Cr',netColor:'green',buyPct:71,sellPct:29,sentiment:'BULLISH',txns:[{name:'Sunil Mittal',role:'Chairman',type:'BUY',val:'₹120 Cr',date:'Mar 2026'},{name:'Gopal Vittal',role:'CEO',type:'BUY',val:'₹18 Cr',date:'Feb 2026'},{name:'Soumen Ray',role:'CFO',type:'SELL',val:'₹5 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'AIRTEL',v:'₹1,780',dir:'up',chg:'+0.6%'},{l:'ARPU',v:'₹245',dir:'up',chg:'+12% YoY'},{l:'SUBSCRIBERS',v:'380M+',dir:'up',chg:'+5%'},{l:'5G CITIES',v:'5,000+',dir:'up',chg:'PAN-INDIA'},{l:'AFRICA REV',v:'₹38,640 Cr',dir:'up',chg:'+20%'},{l:'EBITDA',v:'₹72,000 Cr',dir:'up',chg:'+16%'}],
     tickerSpecial:[{l:'TARIFF HIKE',v:'EXPECTED H1 2026',color:'orange',vColor:'yellow'},{l:'AFRICA IPO',v:'UNDER REVIEW',dir:'',chg:''}],
     sectors:'TELECOM | 5G | ENTERPRISE | AFRICA | DIGITAL'
@@ -1665,6 +1707,7 @@ const STOCKS = {
     consensusTarget:'₹2,440', consensusUpside:'+11.9%',
     signals:[{type:'BULL',text:'Green energy leadership — largest solar mfg in India'},{type:'BULL',text:'Airport monopoly — 8 airports, 32 Cr passengers'},{type:'BEAR',text:'Hindenburg report overhang — FII confidence shaky'},{type:'BEAR',text:'Very high leverage — Capex/EBITDA at 336%'},{type:'NEUT',text:'Execution risk on massive capex pipeline'},{type:'NEUT',text:'Governance perception improving but not resolved'}],
     swot:{s:['India\'s largest airport operator','Fastest growing solar mfg','Strong govt infrastructure ties','Rapid execution capability'],w:['Very high debt/capex ratio','Low ROE at 9%','Governance perception issues','Coal business transition risk'],o:['India green energy 500 GW target','Airport traffic doubling','Data center boom','Road infra ₹1.4T spend'],t:['Hindenburg-type activist attacks','Interest rate risk on debt','Regulatory/political risk','ESG concerns from coal business']},
+    insider:{buyCount:7,sellCount:1,netVal:'+₹200 Cr',netColor:'green',buyPct:88,sellPct:12,sentiment:'BULLISH',txns:[{name:'Gautam Adani',role:'Chairman',type:'BUY',val:'₹150 Cr',date:'Mar 2026'},{name:'Rajesh Adani',role:'MD',type:'BUY',val:'₹35 Cr',date:'Feb 2026'},{name:'Jugeshinder Singh',role:'CFO',type:'BUY',val:'₹15 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'ADANI ENT',v:'₹2,180',dir:'down',chg:'-2.1%'},{l:'SOLAR MFG',v:'4 GW capacity',dir:'up',chg:'+45%'},{l:'AIRPORTS',v:'32 Cr pax/yr',dir:'up',chg:'+25%'},{l:'CAPEX FY26E',v:'₹42,000 Cr',dir:'up',chg:'+20%'},{l:'EBITDA',v:'₹12,500 Cr',dir:'up',chg:'+22%'},{l:'NET PROFIT',v:'₹4,200 Cr',dir:'up',chg:'+18%'}],
     tickerSpecial:[{l:'SOLAR 10GW',v:'H2 2026 TARGET',color:'orange',vColor:'yellow'},{l:'NAVI MUMBAI',v:'AIRPORT CY2027',dir:'',chg:''}],
     sectors:'MINING | SOLAR | AIRPORTS | INFRA | DATA CENTERS'
@@ -1713,6 +1756,7 @@ const STOCKS = {
     consensusTarget:'₹279', consensusUpside:'+22.4%',
     signals:[{type:'BULL',text:'Blinkit — fastest growing quick commerce, 1000+ stores'},{type:'BULL',text:'Food delivery profitable at adjusted EBITDA level'},{type:'BEAR',text:'PE of 280x — extreme valuation, priced for perfection'},{type:'BEAR',text:'Swiggy + Zepto competition intensifying in quick commerce'},{type:'NEUT',text:'Going Out segment (District) still finding product-market fit'},{type:'NEUT',text:'B2B Hyperpure scaling but margins negative'}],
     swot:{s:['#1 food delivery platform in India','Blinkit — fastest growing quick commerce','Strong brand recall & network effects','Asset-light tech platform model'],w:['Extremely high PE valuation (280x)','No dividend — reinvesting everything','Blinkit still loss-making','Dependent on urban metro markets'],o:['Quick commerce TAM $45B by 2030','Going Out / events vertical expansion','Tier 2/3 city penetration','Super-app consolidation play'],t:['Swiggy + Zepto aggressive competition','Regulatory risk on gig worker laws','Customer acquisition cost inflation','Dark store unit economics unproven at scale']},
+    insider:{buyCount:4,sellCount:3,netVal:'+₹20 Cr',netColor:'green',buyPct:57,sellPct:43,sentiment:'NEUTRAL',txns:[{name:'Deepinder Goyal',role:'CEO & Founder',type:'BUY',val:'₹30 Cr',date:'Mar 2026'},{name:'Akshant Goyal',role:'CFO',type:'SELL',val:'₹8 Cr',date:'Feb 2026'},{name:'Gaurav Gupta',role:'Co-Founder',type:'SELL',val:'₹5 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'ETERNAL',v:'₹228',dir:'up',chg:'+1.8%'},{l:'BLINKIT GOV',v:'₹14K Cr',dir:'up',chg:'+120%'},{l:'FOOD ORDERS',v:'18L/day',dir:'up',chg:'+25%'},{l:'DARK STORES',v:'1,000+',dir:'up',chg:'+80%'},{l:'ADJ EBITDA',v:'₹1,200 Cr',dir:'up',chg:'TURNAROUND'},{l:'REVENUE',v:'₹18,500 Cr',dir:'up',chg:'+55%'}],
     tickerSpecial:[{l:'BLINKIT IPO?',v:'FY28 POSSIBILITY',color:'orange',vColor:'yellow'},{l:'SUPER APP',v:'2030 VISION',dir:'',chg:''}],
     sectors:'FOOD DELIVERY | QUICK COMMERCE | GOING OUT | B2B SUPPLY'
@@ -1761,6 +1805,7 @@ const STOCKS = {
     consensusTarget:'₹504', consensusUpside:'+15.1%',
     signals:[{type:'BULL',text:'Cigarettes — 72% EBIT margin, unmatched cash machine'},{type:'BULL',text:'FMCG margin trajectory — from 0% to 10% and climbing'},{type:'BEAR',text:'ESG/sin stock label limits FII ownership'},{type:'BEAR',text:'Cigarette volume growth capped at 3-4%'},{type:'NEUT',text:'Hotel demerger creates separate value unlock'},{type:'NEUT',text:'Dividend yield ~3% provides floor'}],
     swot:{s:['Cigarette monopoly — 75% market share','Zero debt, massive FCF generation','25+ FMCG brands scaling rapidly','Strongest distribution in India'],w:['Sin stock label limits investor base','FMCG margins still below peers','No promoter — institutional run','Over-dependence on cigarettes for profit'],o:['FMCG margin expansion to 15%+','ITC Hotels separate listing','Rural India consumption recovery','Premiumization across all segments'],t:['Cigarette taxation risk','ESG fund exclusions','HUL/Nestle competition in FMCG','Regulatory crackdown on tobacco']},
+    insider:{buyCount:2,sellCount:1,netVal:'+₹10 Cr',netColor:'green',buyPct:67,sellPct:33,sentiment:'NEUTRAL',txns:[{name:'Sanjiv Puri',role:'CMD',type:'BUY',val:'₹8 Cr',date:'Mar 2026'},{name:'Supratim Dhar',role:'CFO',type:'BUY',val:'₹3 Cr',date:'Feb 2026'},{name:'Board Member',role:'Independent Dir',type:'SELL',val:'₹1 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'ITC',v:'₹438',dir:'up',chg:'+0.6%'},{l:'CIG EBIT',v:'72% MARGIN',dir:'up',chg:'STABLE'},{l:'FMCG REV',v:'₹21K Cr',dir:'up',chg:'+12%'},{l:'DIV YIELD',v:'3.1%',dir:'',chg:'STEADY'},{l:'FCF',v:'₹18K Cr',dir:'up',chg:'+10%'},{l:'NET PROFIT',v:'₹20.5K Cr',dir:'up',chg:'+8%'}],
     tickerSpecial:[{l:'HOTELS DEMERGER',v:'VALUE UNLOCK',color:'orange',vColor:'yellow'},{l:'FMCG PROFIT',v:'MARGIN INFLECTION',dir:'',chg:''}],
     sectors:'CIGARETTES | FMCG | HOTELS | AGRI | PAPER'
@@ -1809,6 +1854,7 @@ const STOCKS = {
     consensusTarget:'₹9,900', consensusUpside:'+11.9%',
     signals:[{type:'BULL',text:'AUM growing 25%+ CAGR — best in class for NBFCs'},{type:'BULL',text:'Cross-sell engine — 5.2 products per customer'},{type:'BEAR',text:'RBI tightening unsecured lending norms'},{type:'BEAR',text:'PE premium at 32.5x vs banks at 18x'},{type:'NEUT',text:'Digital platform buildout — long term moat'},{type:'NEUT',text:'NPA at 0.95% — best ever but cyclical risk remains'}],
     swot:{s:['Best-in-class ROE at 22%','9.5 Cr customer base','Digital-first origination (65%)','Lowest cost-to-income ratio among NBFCs'],w:['High valuation premium (32.5x PE)','Unsecured loan concentration','Rate cycle sensitivity','Regulatory overhang'],o:['India credit/GDP at only 56%','Digital lending TAM $1T by 2030','Payment bank / new licenses','Rural & Tier 3 expansion'],t:['NPA cycle risk if economy slows','RBI tightening norms','Fintech competition','Interest rate spikes']},
+    insider:{buyCount:5,sellCount:2,netVal:'+₹65 Cr',netColor:'green',buyPct:71,sellPct:29,sentiment:'BULLISH',txns:[{name:'Rajiv Jain',role:'MD',type:'BUY',val:'₹40 Cr',date:'Mar 2026'},{name:'Sandeep Jain',role:'CFO',type:'BUY',val:'₹15 Cr',date:'Feb 2026'},{name:'Executive',role:'VP Operations',type:'SELL',val:'₹5 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'BAJ FIN',v:'₹8,850',dir:'up',chg:'+1.2%'},{l:'AUM',v:'₹3.98L Cr',dir:'up',chg:'+28%'},{l:'NII',v:'₹36K Cr',dir:'up',chg:'+25%'},{l:'GNPA',v:'0.95%',dir:'down',chg:'BEST EVER'},{l:'CUSTOMERS',v:'9.5 Cr',dir:'up',chg:'+22%'},{l:'NET PROFIT',v:'₹16.8K Cr',dir:'up',chg:'+22%'}],
     tickerSpecial:[{l:'AUM ₹4L Cr',v:'MILESTONE Q4',color:'orange',vColor:'yellow'},{l:'DIGITAL',v:'65% ORIGINATION',dir:'',chg:''}],
     sectors:'CONSUMER FINANCE | MORTGAGE | SME | DIGITAL LENDING'
@@ -1857,6 +1903,7 @@ const STOCKS = {
     consensusTarget:'₹1,530', consensusUpside:'+15.9%',
     signals:[{type:'BULL',text:'ROA at 2.35% — best in large bank category'},{type:'BULL',text:'GNPA down to 2% — cleanest ever balance sheet'},{type:'BEAR',text:'NIM under pressure from rate cuts'},{type:'BEAR',text:'HDFC Bank competition on retail side'},{type:'NEUT',text:'45.5% FII holding — among highest in banks'},{type:'NEUT',text:'Digital transformation — iMobile Pay gaining traction'}],
     swot:{s:['Best ROA among large banks (2.35%)','Cleanest balance sheet in a decade','Strong digital platform (iMobile)','Diversified loan book'],w:['NIM pressure in falling rate cycle','No promoter — institutional holding','Corporate banking margins thin','International ops lower margin'],o:['India credit/GDP heading to 100%','Digital lending revolution','SME/MSME formalization','Wealth management growth'],t:['NPA cycle if economy slows','Fintech competition','Rate cycle compression','Regulatory tightening']},
+    insider:{buyCount:4,sellCount:2,netVal:'+₹55 Cr',netColor:'green',buyPct:67,sellPct:33,sentiment:'BULLISH',txns:[{name:'Sandeep Bakhshi',role:'CEO & MD',type:'BUY',val:'₹30 Cr',date:'Mar 2026'},{name:'Anup Bagchi',role:'Exec Director',type:'BUY',val:'₹12 Cr',date:'Feb 2026'},{name:'Sandeep Batra',role:'Exec Director',type:'SELL',val:'₹5 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'ICICI BANK',v:'₹1,320',dir:'up',chg:'+0.9%'},{l:'NII',v:'₹82K Cr',dir:'up',chg:'+12%'},{l:'GNPA',v:'2.0%',dir:'down',chg:'BEST EVER'},{l:'ROA',v:'2.35%',dir:'up',chg:'INDUSTRY BEST'},{l:'ADVANCES',v:'₹13.1L Cr',dir:'up',chg:'+16%'},{l:'NET PROFIT',v:'₹48K Cr',dir:'up',chg:'+15%'}],
     tickerSpecial:[{l:'#1 ROA BANK',v:'2.35% INDUSTRY BEST',color:'orange',vColor:'yellow'},{l:'DIGITAL',v:'80%+ TXNS',dir:'',chg:''}],
     sectors:'RETAIL BANKING | CORPORATE | TREASURY | INTERNATIONAL'
@@ -1905,6 +1952,7 @@ const STOCKS = {
     consensusTarget:'₹860', consensusUpside:'+26.5%',
     signals:[{type:'BULL',text:'JLR turnaround complete — 8.5% EBIT margin, record FCF'},{type:'BULL',text:'India EV leader — 72% market share with Nexon/Curvv'},{type:'BEAR',text:'JLR cyclical — luxury demand sensitive to recession'},{type:'BEAR',text:'Currency risk — 70% revenue in GBP/USD'},{type:'NEUT',text:'Deleveraging on track — net debt zero by FY28'},{type:'NEUT',text:'PE at 8.5x looks cheap but cyclical trough earnings risk'}],
     swot:{s:['JLR brand portfolio (Range Rover/Defender)','#1 CV maker in India (42% share)','India EV market leader (72% share)','Strong FCF generation ₹28K Cr'],w:['JLR cyclicality — luxury demand volatility','Currency risk (GBP revenue, INR costs)','PV margins below industry average','Complex multi-geography operations'],o:['JLR EMA platform — full EV lineup','India EV market $100B by 2030','CV fleet electrification','Tata.ev ecosystem buildout'],t:['China EV makers entering India','Recession risk for JLR luxury','Semiconductor supply disruptions','Emission regulation costs']},
+    insider:{buyCount:3,sellCount:4,netVal:'-₹15 Cr',netColor:'red',buyPct:43,sellPct:57,sentiment:'NEUTRAL',txns:[{name:'N Chandrasekaran',role:'Tata Sons Chair',type:'SELL',val:'₹12 Cr',date:'Mar 2026'},{name:'PB Balaji',role:'CFO',type:'BUY',val:'₹5 Cr',date:'Feb 2026'},{name:'Girish Wagh',role:'Exec Director',type:'SELL',val:'₹8 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'TATA MOTORS',v:'₹680',dir:'up',chg:'+1.5%'},{l:'JLR EBIT',v:'8.5% MARGIN',dir:'up',chg:'RECORD'},{l:'CV SHARE',v:'42%',dir:'up',chg:'+2%'},{l:'EV SHARE',v:'72% INDIA',dir:'up',chg:'#1'},{l:'FCF',v:'₹28K Cr',dir:'up',chg:'+20%'},{l:'NET PROFIT',v:'₹32K Cr',dir:'up',chg:'+15%'}],
     tickerSpecial:[{l:'JLR EV 2030',v:'100% ELECTRIC',color:'orange',vColor:'yellow'},{l:'DEBT FREE',v:'FY28 TARGET',dir:'',chg:''}],
     sectors:'JLR LUXURY | COMMERCIAL VEHICLES | PASSENGER VEHICLES | EV'
@@ -1953,6 +2001,7 @@ const STOCKS = {
     consensusTarget:'₹704', consensusUpside:'+13.5%',
     signals:[{type:'BULL',text:'Protection VNB margin at 68% — highest in industry'},{type:'BULL',text:'HDFC Bank channel — massive distribution unlock'},{type:'BEAR',text:'PE of 78x — expensive vs global insurance peers'},{type:'BEAR',text:'ULIP margins thin at 8% — market dependent'},{type:'NEUT',text:'Insurance penetration at 3.2% — long runway but slow'},{type:'NEUT',text:'Annuity book growing fastest — aging India play'}],
     swot:{s:['Strongest bancassurance channel (HDFC Bank)','Best VNB margins in protection (68%)','Diversified product portfolio','Strong persistency at 87%'],w:['High valuation at 78x PE','ULIP dependence on market conditions','New entrants increasing competition','Slow growth in rural penetration'],o:['India insurance penetration only 3.2%','Protection gap 92% uninsured','Pension/annuity for aging India','Digital-first insurance products'],t:['IRDAI regulatory changes','LIC/SBI Life competition','Bima Sugam (insurance marketplace)','Interest rate cycle impact on AUM']},
+    insider:{buyCount:2,sellCount:3,netVal:'-₹10 Cr',netColor:'red',buyPct:40,sellPct:60,sentiment:'NEUTRAL',txns:[{name:'Vibha Padalkar',role:'CEO & MD',type:'SELL',val:'₹8 Cr',date:'Mar 2026'},{name:'Niraj Shah',role:'CFO',type:'BUY',val:'₹3 Cr',date:'Feb 2026'},{name:'Executive',role:'Sr VP',type:'SELL',val:'₹5 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'HDFC LIFE',v:'₹620',dir:'up',chg:'+0.4%'},{l:'VNB',v:'₹3,800 Cr',dir:'up',chg:'+15%'},{l:'APE',v:'₹14.5K Cr',dir:'up',chg:'+18%'},{l:'VNB MARGIN',v:'26.5%',dir:'up',chg:'STABLE'},{l:'AUM',v:'₹3.12L Cr',dir:'up',chg:'+20%'},{l:'PAT',v:'₹1,700 Cr',dir:'up',chg:'+12%'}],
     tickerSpecial:[{l:'BANCASSURANCE',v:'HDFC BANK UNLOCK',color:'orange',vColor:'yellow'},{l:'PROTECTION',v:'68% VNB MARGIN',dir:'',chg:''}],
     sectors:'PROTECTION | SAVINGS | ULIP | ANNUITY | HEALTH'
@@ -2001,6 +2050,7 @@ const STOCKS = {
     consensusTarget:'₹926', consensusUpside:'+16.5%',
     signals:[{type:'BULL',text:'Cheapest large bank at 9.2x PE — deep value play'},{type:'BULL',text:'Subsidiary portfolio worth ₹3L Cr+ (SBI Life, Cards, MF)'},{type:'BEAR',text:'Govt ownership 57.5% — policy lending risk'},{type:'BEAR',text:'Cost/income at 50.5% — higher than private banks'},{type:'NEUT',text:'GNPA at 2.2% — best in decade for SBI'},{type:'NEUT',text:'YONO digital platform scaling but behind ICICI iMobile'}],
     swot:{s:['India\'s largest bank — ₹52L Cr deposits','Subsidiary portfolio (SBI Life, MF, Cards)','Government backing — zero default risk','22,400 branches — unmatched reach'],w:['Government ownership limits agility','Higher cost/income vs private banks','Technology gap vs ICICI/HDFC','Political lending pressure'],o:['India credit/GDP doubling opportunity','Subsidiary value unlocking','Digital banking transformation','Rural India banking expansion'],t:['NPA cycle if economy slows','Private bank competition intensifying','Govt stake sale overhang','Interest rate compression on NIM']},
+    insider:{buyCount:1,sellCount:0,netVal:'+₹2 Cr',netColor:'green',buyPct:100,sellPct:0,sentiment:'NEUTRAL',txns:[{name:'CS Setty',role:'Chairman',type:'BUY',val:'₹2 Cr',date:'Mar 2026'}]},
     tickerItems:[{l:'SBI',v:'₹795',dir:'up',chg:'+0.7%'},{l:'NII',v:'₹1.65L Cr',dir:'up',chg:'+10%'},{l:'GNPA',v:'2.2%',dir:'down',chg:'DECADE BEST'},{l:'ROE',v:'20.5%',dir:'up',chg:'RECORD'},{l:'ADVANCES',v:'₹39.5L Cr',dir:'up',chg:'+14%'},{l:'NET PROFIT',v:'₹72K Cr',dir:'up',chg:'+18%'}],
     tickerSpecial:[{l:'CHEAPEST BANK',v:'9.2x PE',color:'orange',vColor:'yellow'},{l:'SUBSIDIARIES',v:'₹3L Cr VALUE',dir:'',chg:''}],
     sectors:'RETAIL BANKING | CORPORATE | INTERNATIONAL | SUBSIDIARIES'
@@ -2049,6 +2099,7 @@ const STOCKS = {
     consensusTarget:'₹3,710', consensusUpside:'+10.7%',
     signals:[{type:'BULL',text:'Tanishq — India\'s most trusted jewellery brand, 520+ stores'},{type:'BULL',text:'Jewellery market formalizing — unorganized to organized shift'},{type:'BEAR',text:'PE at 62x — premium valuation leaves little margin of safety'},{type:'BEAR',text:'Gold price volatility impacts demand cycles'},{type:'NEUT',text:'CaratLane acquisition — online jewellery play'},{type:'NEUT',text:'Wearables segment growing but still small'}],
     swot:{s:['Tanishq — unmatched brand trust','Tata Group parentage','520+ stores pan-India','28% ROE, capital efficient'],w:['High PE (62x) limits upside','80% revenue from single segment','Gold price volatility','Limited international presence'],o:['Jewellery formalization ($80B TAM)','CaratLane online growth','Wearables market expansion','Wedding market $130B by 2030'],t:['Gold price spikes reducing volume','Lab-grown diamonds disruption','Regional jewellers competition','Consumer spending slowdown']},
+    insider:{buyCount:3,sellCount:2,netVal:'+₹20 Cr',netColor:'green',buyPct:60,sellPct:40,sentiment:'NEUTRAL',txns:[{name:'CK Venkataraman',role:'MD',type:'BUY',val:'₹12 Cr',date:'Mar 2026'},{name:'Ashok Sonthalia',role:'CFO',type:'BUY',val:'₹5 Cr',date:'Feb 2026'},{name:'Executive',role:'VP Strategy',type:'SELL',val:'₹3 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'TITAN',v:'₹3,350',dir:'up',chg:'+0.5%'},{l:'TANISHQ',v:'520+ STORES',dir:'up',chg:'+22%'},{l:'JEWELLERY REV',v:'₹44K Cr',dir:'up',chg:'+22%'},{l:'ROE',v:'28%',dir:'',chg:'STRONG'},{l:'NET PROFIT',v:'₹4,200 Cr',dir:'up',chg:'+18%'}],
     tickerSpecial:[{l:'TANISHQ 700',v:'FY28 TARGET',color:'orange',vColor:'yellow'}],
     sectors:'JEWELLERY | WATCHES | EYECARE | EMERGING'
@@ -2097,6 +2148,7 @@ const STOCKS = {
     consensusTarget:'₹2,460', consensusUpside:'+4.7%',
     signals:[{type:'BULL',text:'53% market share — India\'s undisputed paint leader'},{type:'BULL',text:'30% ROE with near-zero debt — quality compounder'},{type:'BEAR',text:'Birla Opus (Grasim) biggest competitive threat in decades'},{type:'BEAR',text:'Volume growth slowed to 4% — below historical 12%'},{type:'NEUT',text:'Home decor (B&K) adjacency — long-term optionality'},{type:'NEUT',text:'Crude oil prices impact raw material costs'}],
     swot:{s:['53% market share — dominant leader','Best distribution in India (75K+ dealers)','30% ROE, near-zero debt','Strongest brand in paints'],w:['Volume growth slowing (4%)','Heavy premium valuation (48x PE)','Home decor venture loss-making','Dependent on housing cycle'],o:['India urbanization 35%→50%','Home decor $15B TAM adjacency','Waterproofing + putty growth','Rural penetration'],t:['Birla Opus (Grasim) $2B capex entry','JSW Paints aggressive pricing','Raw material cost inflation','Real estate slowdown risk']},
+    insider:{buyCount:2,sellCount:4,netVal:'-₹25 Cr',netColor:'red',buyPct:33,sellPct:67,sentiment:'BEARISH',txns:[{name:'Amit Syngle',role:'MD & CEO',type:'SELL',val:'₹15 Cr',date:'Mar 2026'},{name:'Executive',role:'CFO',type:'SELL',val:'₹8 Cr',date:'Feb 2026'},{name:'Jalaj Dani',role:'Promoter',type:'BUY',val:'₹5 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'ASIAN PAINTS',v:'₹2,350',dir:'down',chg:'-0.5%'},{l:'MARKET SHARE',v:'53%',dir:'',chg:'LEADER'},{l:'DECORATIVE',v:'₹28.8K Cr',dir:'up',chg:'+5%'},{l:'ROE',v:'30%',dir:'',chg:'STRONG'},{l:'NET PROFIT',v:'₹5K Cr',dir:'up',chg:'+6%'}],
     tickerSpecial:[{l:'BIRLA OPUS',v:'COMPETITIVE THREAT',color:'red',vColor:'yellow'}],
     sectors:'DECORATIVE PAINTS | INDUSTRIAL | HOME DECOR | INTERNATIONAL'
@@ -2145,6 +2197,7 @@ const STOCKS = {
     consensusTarget:'₹13,140', consensusUpside:'+14.3%',
     signals:[{type:'BULL',text:'42% market share — India\'s #1 carmaker with 4500+ dealers'},{type:'BULL',text:'SUV pivot working — Brezza/Fronx/Grand Vitara driving mix improvement'},{type:'BEAR',text:'Late to EV — eVitara is first EV vs Tata\'s 5+ EV models'},{type:'BEAR',text:'Compact car segment shrinking — consumer shift to SUVs'},{type:'NEUT',text:'Zero debt + ₹12K Cr FCF — financial fortress'},{type:'NEUT',text:'Kharkhoda new plant adds 10L capacity for future growth'}],
     swot:{s:['42% PV market share — dominant','4500+ dealers — best network','Zero debt, ₹12K Cr FCF','Suzuki\'s global cost advantage'],w:['Late to EV market','No premium/luxury segment','Compact car share shrinking','Brand perception as budget'],o:['India auto penetration only 35/1000','SUV market $20B and growing','Export markets (Africa, Latam)','Hybrid/CNG bridge to EV'],t:['Tata/Hyundai EV competition','Chinese EV entry threat','Emission regulation costs','Urban shift to shared mobility']},
+    insider:{buyCount:1,sellCount:2,netVal:'-₹8 Cr',netColor:'red',buyPct:33,sellPct:67,sentiment:'NEUTRAL',txns:[{name:'Hisashi Takeuchi',role:'MD & CEO',type:'SELL',val:'₹5 Cr',date:'Mar 2026'},{name:'Ajay Seth',role:'CFO',type:'SELL',val:'₹4 Cr',date:'Feb 2026'},{name:'RC Bhargava',role:'Chairman',type:'BUY',val:'₹1 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'MARUTI',v:'₹11,500',dir:'up',chg:'+0.5%'},{l:'PV SHARE',v:'42%',dir:'',chg:'#1 INDIA'},{l:'SUV REV',v:'₹48K Cr',dir:'up',chg:'+22%'},{l:'FCF',v:'₹12K Cr',dir:'up',chg:'+18%'},{l:'NET PROFIT',v:'₹13.5K Cr',dir:'up',chg:'+14%'}],
     tickerSpecial:[{l:'eVITARA',v:'FIRST EV LAUNCHED',color:'orange',vColor:'yellow'}],
     sectors:'COMPACT CARS | SUV | EXPORTS | CNG / GREEN'
@@ -2193,6 +2246,7 @@ const STOCKS = {
     consensusTarget:'₹4,010', consensusUpside:'+14.6%',
     signals:[{type:'BULL',text:'₹9.3L Cr order book — 3.8x book-to-bill, multi-year visibility'},{type:'BULL',text:'India infra super-cycle — ₹11.1L Cr budget FY26'},{type:'BEAR',text:'Working capital intensity — project financing needs'},{type:'BEAR',text:'No promoter — institutional holding only'},{type:'NEUT',text:'Defence push — submarine + missile systems orders'},{type:'NEUT',text:'IT subsidiaries (LTIMindtree, LTTS) provide tech hedge'}],
     swot:{s:['₹9.3L Cr order book — 3.8x revenue visibility','India\'s largest engineering conglomerate','IT subsidiaries add tech moat','Defence + infra dual play'],w:['No promoter — institutional run','Working capital intensive','Project execution delays possible','Complex conglomerate structure'],o:['India infra $1.4T spend pipeline','Defence indigenization push','Green hydrogen emerging','Smart cities 100+ projects'],t:['Government policy changes','Global commodity price spikes','Interest rate impact on projects','Competition from international EPC firms']},
+    insider:{buyCount:3,sellCount:1,netVal:'+₹35 Cr',netColor:'green',buyPct:75,sellPct:25,sentiment:'BULLISH',txns:[{name:'SN Subrahmanyan',role:'CMD',type:'BUY',val:'₹20 Cr',date:'Mar 2026'},{name:'R Shankar Raman',role:'CFO',type:'BUY',val:'₹10 Cr',date:'Feb 2026'},{name:'Executive',role:'VP',type:'SELL',val:'₹3 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'L&T',v:'₹3,500',dir:'up',chg:'+0.7%'},{l:'ORDER BOOK',v:'₹9.3L Cr',dir:'up',chg:'+20%'},{l:'INFRA REV',v:'₹1.1L Cr',dir:'up',chg:'+20%'},{l:'DEFENCE',v:'₹65K Cr orders',dir:'up',chg:'+25%'},{l:'NET PROFIT',v:'₹15.2K Cr',dir:'up',chg:'+16%'}],
     tickerSpecial:[{l:'ORDER BOOK',v:'₹9.3L Cr RECORD',color:'orange',vColor:'yellow'}],
     sectors:'INFRASTRUCTURE | IT | ENERGY | DEFENCE'
@@ -2240,6 +2294,7 @@ const STOCKS = {
     consensusTarget:'₹2,460', consensusUpside:'+3.4%',
     signals:[{type:'BULL',text:'35% ROE, zero debt — gold standard quality'},{type:'BULL',text:'9M+ retail outlets — deepest FMCG distribution in India'},{type:'BEAR',text:'Volume growth nearly flat — 4% revenue growth disappointing'},{type:'BEAR',text:'55x PE expensive vs ITC at 27.5x with better growth'},{type:'NEUT',text:'Premiumization strategy slowly shifting mix upward'},{type:'NEUT',text:'1.7% dividend yield provides downside support'}],
     swot:{s:['India\'s #1 FMCG company','35% ROE, zero debt','9M+ outlet distribution','50+ power brands'],w:['Volume growth stalled at 2-3%','Premium valuation (55x PE)','Losing share to D2C brands','Rural India recovery dependent'],o:['India FMCG $110B TAM','Premium/natural products boom','Digital distribution channels','Rural consumption recovery'],t:['D2C brands gaining share online','ITC FMCG catching up fast','Commodity price inflation','Consumer downtrading risk']},
+    insider:{buyCount:1,sellCount:3,netVal:'-₹18 Cr',netColor:'red',buyPct:25,sellPct:75,sentiment:'BEARISH',txns:[{name:'Rohit Jawa',role:'CEO & MD',type:'SELL',val:'₹12 Cr',date:'Mar 2026'},{name:'Ritesh Tiwari',role:'CFO',type:'SELL',val:'₹5 Cr',date:'Feb 2026'},{name:'Executive',role:'Director',type:'BUY',val:'₹2 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'HUL',v:'₹2,380',dir:'up',chg:'+0.2%'},{l:'BPC REV',v:'₹27.3K Cr',dir:'up',chg:'+5%'},{l:'ROE',v:'35%',dir:'',chg:'BEST IN CLASS'},{l:'OUTLETS',v:'9M+',dir:'',chg:'#1 REACH'},{l:'DIV YIELD',v:'1.7%',dir:'',chg:'STABLE'},{l:'NET PROFIT',v:'₹10.5K Cr',dir:'up',chg:'+5%'}],
     tickerSpecial:[{l:'VOLUME RECOVERY',v:'KEY WATCH FY27',color:'yellow',vColor:'orange'}],
     sectors:'BEAUTY & PERSONAL CARE | HOME CARE | FOODS'
@@ -2288,6 +2343,7 @@ const STOCKS = {
     consensusTarget:'₹1,990', consensusUpside:'+11.8%',
     signals:[{type:'BULL',text:'India\'s #1 pharma company — 55% chronic therapy share'},{type:'BULL',text:'US specialty (derma/Taro) — high-margin growth engine'},{type:'BEAR',text:'US generics pricing pressure continues'},{type:'BEAR',text:'Past governance concerns (Dilip Shanghvi family)'},{type:'NEUT',text:'R&D spend at 7.5% of revenue — building specialty pipeline'},{type:'NEUT',text:'Emerging markets (Africa/Asia) providing diversification'}],
     swot:{s:['#1 pharma in India (chronic focus)','US specialty derma leadership (Taro)','200+ ANDA filings in US','Strong FCF ₹10K Cr'],w:['Past governance overhang','US generics margin pressure','Dependence on Taro for specialty','High promoter control'],o:['US specialty pipeline $5B+ peak sales','India chronic therapy growth','Biosimilar opportunity','CRAMS/CDMO expansion'],t:['US drug pricing reform','FDA regulatory actions','Generic competition in specialty','Currency volatility (INR/USD)']},
+    insider:{buyCount:5,sellCount:1,netVal:'+₹90 Cr',netColor:'green',buyPct:83,sellPct:17,sentiment:'BULLISH',txns:[{name:'Dilip Shanghvi',role:'Promoter/MD',type:'BUY',val:'₹75 Cr',date:'Mar 2026'},{name:'CS Muralidharan',role:'CFO',type:'BUY',val:'₹8 Cr',date:'Feb 2026'},{name:'Executive',role:'VP',type:'SELL',val:'₹3 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'SUN PHARMA',v:'₹1,780',dir:'up',chg:'+0.4%'},{l:'INDIA #1',v:'₹18.2K Cr',dir:'up',chg:'+12%'},{l:'US SPEC',v:'₹18.7K Cr',dir:'up',chg:'+15%'},{l:'R&D',v:'7.5% of Rev',dir:'',chg:'PIPELINE'},{l:'NET PROFIT',v:'₹12.5K Cr',dir:'up',chg:'+18%'}],
     tickerSpecial:[{l:'SPECIALTY US',v:'GROWTH ENGINE',color:'orange',vColor:'yellow'}],
     sectors:'INDIA FORMULATIONS | US SPECIALTY | ROW | API'
@@ -2336,6 +2392,7 @@ const STOCKS = {
     consensusTarget:'₹5,120', consensusUpside:'+21.9%',
     signals:[{type:'BULL',text:'₹1L Cr+ order book — India\'s sole fighter aircraft manufacturer'},{type:'BULL',text:'28% ROE, zero debt — defence cash machine'},{type:'BEAR',text:'Execution delays — Tejas delivery behind schedule'},{type:'BEAR',text:'Technology gap vs global peers (Lockheed, Boeing)'},{type:'NEUT',text:'AMCA 5th gen fighter — game changer if successful'},{type:'NEUT',text:'Defence exports growing but from low base'}],
     swot:{s:['India\'s sole fighter aircraft maker','₹1L Cr+ order book','Zero debt, 28% ROE','MRO monopoly for Indian military'],w:['Execution/delivery delays common','Technology gap vs global OEMs','Government-run inefficiencies','Single customer dependency (MoD)'],o:['India defence budget ₹6.2L Cr','Make in India 75% indigenization','AMCA 5th gen fighter','Global defence export push ₹35K Cr'],t:['Budget cuts in defence','Technology obsolescence','Import competition (Rafale etc)','Geopolitical changes']},
+    insider:{buyCount:0,sellCount:0,netVal:'₹0',netColor:'yellow',buyPct:50,sellPct:50,sentiment:'NEUTRAL',txns:[{name:'Govt of India',role:'Promoter (75.15%)',type:'BUY',val:'No change',date:'Q4 FY26'}]},
     tickerItems:[{l:'HAL',v:'₹4,200',dir:'up',chg:'+1.8%'},{l:'ORDER BOOK',v:'₹1L Cr+',dir:'up',chg:'+20%'},{l:'TEJAS',v:'83 AIRCRAFT',dir:'',chg:'ORDER'},{l:'ROE',v:'28%',dir:'',chg:'STRONG'},{l:'NET PROFIT',v:'₹7.2K Cr',dir:'up',chg:'+20%'}],
     tickerSpecial:[{l:'AMCA 5TH GEN',v:'IN DEVELOPMENT',color:'orange',vColor:'yellow'}],
     sectors:'FIGHTER AIRCRAFT | HELICOPTERS | MRO | ENGINES'
@@ -2384,6 +2441,7 @@ const STOCKS = {
     consensusTarget:'₹413', consensusUpside:'+18.7%',
     signals:[{type:'BULL',text:'India\'s largest power company — 76 GW capacity, 25% market share'},{type:'BULL',text:'Regulated 15.5% ROE — predictable earnings visibility'},{type:'BEAR',text:'High debt ₹2.1L Cr — though backed by regulated assets'},{type:'BEAR',text:'ESG concerns from thermal dependence (80% of revenue)'},{type:'NEUT',text:'NTPC Green IPO — RE value unlocking play'},{type:'NEUT',text:'Dividend yield 2.2% — income play for institutions'}],
     swot:{s:['India\'s #1 power producer (76 GW)','Regulated 15.5% ROE guarantee','Government backing (51.1%)','NTPC Green — RE subsidiary'],w:['80% thermal — coal transition risk','High debt ₹2.1L Cr','ESG concerns from coal dependence','Slow RE ramp vs private peers'],o:['India power demand doubling by 2035','500 GW RE national target','Green hydrogen potential','NTPC Green value unlocking'],t:['Coal-to-RE transition costs','Regulatory tariff changes','ESG fund exclusions','Competition from Adani/Tata Power']},
+    insider:{buyCount:1,sellCount:0,netVal:'+₹3 Cr',netColor:'green',buyPct:100,sellPct:0,sentiment:'NEUTRAL',txns:[{name:'Gurdeep Singh',role:'CMD',type:'BUY',val:'₹3 Cr',date:'Mar 2026'}]},
     tickerItems:[{l:'NTPC',v:'₹348',dir:'up',chg:'+0.5%'},{l:'CAPACITY',v:'76 GW',dir:'up',chg:'+8%'},{l:'PLF',v:'77.2%',dir:'',chg:'STRONG'},{l:'DIV YIELD',v:'2.2%',dir:'',chg:'INCOME'},{l:'RE TARGET',v:'60 GW',dir:'',chg:'2032'},{l:'NET PROFIT',v:'₹20K Cr',dir:'up',chg:'+14%'}],
     tickerSpecial:[{l:'NTPC GREEN',v:'RE VALUE UNLOCK',color:'orange',vColor:'yellow'}],
     sectors:'THERMAL POWER | RENEWABLE ENERGY | COAL MINING | TRADING'
@@ -2432,6 +2490,7 @@ const STOCKS = {
     consensusTarget:'₹3,940', consensusUpside:'+2.3%',
     signals:[{type:'BULL',text:'EDLP model — 8-10% below MRP drives consistent footfall'},{type:'BULL',text:'Own-store model — no lease risk, higher long-term returns'},{type:'BEAR',text:'90x PE — extremely expensive even for quality retailer'},{type:'BEAR',text:'Quick commerce (Blinkit/Zepto) disrupting grocery shopping'},{type:'NEUT',text:'365+ stores, adding 40-45/year — steady but slow vs peers'},{type:'NEUT',text:'DMart Ready online still small (7.5%) and loss-making'}],
     swot:{s:['EDLP — lowest prices in organized retail','Own-store model — asset-heavy but no lease risk','₹160 Cr revenue per store','74.6% promoter holding (RK Damani)'],w:['90x PE — expensive valuation','Slow store addition (40-45/yr)','Online (DMart Ready) still weak','West/South concentrated'],o:['India organized retail only 12%','Grocery $500B TAM','North/East India expansion','Private label growth'],t:['Quick commerce (Blinkit, Zepto)','Reliance Retail expansion','E-commerce disruption','Store execution risk in new geographies']},
+    insider:{buyCount:6,sellCount:0,netVal:'+₹180 Cr',netColor:'green',buyPct:100,sellPct:0,sentiment:'BULLISH',txns:[{name:'RK Damani',role:'Promoter',type:'BUY',val:'₹150 Cr',date:'Mar 2026'},{name:'Neville Noronha',role:'CEO & MD',type:'BUY',val:'₹18 Cr',date:'Feb 2026'},{name:'Niladri Deb',role:'CFO',type:'BUY',val:'₹12 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'DMART',v:'₹3,850',dir:'up',chg:'+0.4%'},{l:'STORES',v:'365+',dir:'up',chg:'+45/yr'},{l:'REVENUE',v:'₹55K Cr',dir:'up',chg:'+18%'},{l:'REV/STORE',v:'₹160 Cr',dir:'up',chg:'#1'},{l:'NET PROFIT',v:'₹2.8K Cr',dir:'up',chg:'+15%'}],
     tickerSpecial:[{l:'500 STORES',v:'FY28 TARGET',color:'orange',vColor:'yellow'}],
     sectors:'GROCERY | GENERAL MERCHANDISE | APPAREL | ONLINE'
@@ -2480,6 +2539,7 @@ const STOCKS = {
     consensusTarget:'₹364', consensusUpside:'+13.8%',
     signals:[{type:'BULL',text:'480M Jio users = unmatched distribution for financial products'},{type:'BULL',text:'₹72K Cr net worth — zero debt, massive war chest'},{type:'BEAR',text:'Pre-profit company valued at ₹2L Cr — pure optionality bet'},{type:'BEAR',text:'Zero track record in lending — execution completely unproven'},{type:'NEUT',text:'BlackRock JV for AMC — global credibility but early days'},{type:'NEUT',text:'Ambani\'s bet on replicating Ant Financial model in India'}],
     swot:{s:['480M Jio user base for distribution','₹72K Cr net worth, zero debt','Reliance ecosystem (Retail+Jio+Fin)','BlackRock JV for asset management'],w:['Zero track record in lending','Pre-profit — all businesses loss-making','No established financial brand yet','Late entrant vs Bajaj/HDFC/ICICI'],o:['India credit/GDP at only 56%','Digital lending $1T TAM by 2030','92% insurance gap in India','Broking democratization'],t:['Bajaj Finance/HDFC Bank incumbency','RBI regulatory tightening','Fintech competition (Paytm/PhonePe)','Execution risk on multiple fronts']},
+    insider:{buyCount:3,sellCount:0,netVal:'+₹50 Cr',netColor:'green',buyPct:100,sellPct:0,sentiment:'BULLISH',txns:[{name:'RIL (Promoter)',role:'Parent Company',type:'BUY',val:'₹40 Cr',date:'Mar 2026'},{name:'Hitesh Sethia',role:'MD & CEO',type:'BUY',val:'₹10 Cr',date:'Feb 2026'}]},
     tickerItems:[{l:'JIO FIN',v:'₹320',dir:'up',chg:'+1.0%'},{l:'NET WORTH',v:'₹72K Cr',dir:'',chg:'WAR CHEST'},{l:'JIO USERS',v:'480M',dir:'',chg:'DISTRIBUTION'},{l:'LENDING AUM',v:'₹5K Cr',dir:'up',chg:'+250%'},{l:'BLACKROCK',v:'AMC JV',dir:'',chg:'NEW'}],
     tickerSpecial:[{l:'ANT FINANCIAL',v:'INDIA MODEL',color:'orange',vColor:'yellow'}],
     sectors:'DIGITAL LENDING | BROKING | INSURANCE | PAYMENTS'
@@ -2528,6 +2588,7 @@ const STOCKS = {
     consensusTarget:'₹850', consensusUpside:'+0%',
     signals:[{type:'BULL',text:'4.1 Cr merchants — India\'s largest merchant payment network'},{type:'BULL',text:'Cost rationalization working — losses narrowing rapidly'},{type:'BEAR',text:'RBI Payments Bank ban — lending business paused'},{type:'BEAR',text:'Competition from PhonePe (Walmart) & Google Pay intensifying'},{type:'NEUT',text:'₹8,500 Cr cash — 14+ years runway but no growth clarity'},{type:'NEUT',text:'Turnaround story — stock 3x from lows but still below IPO'}],
     swot:{s:['4.1 Cr merchant base — largest in India','Brand recall in digital payments','₹8,500 Cr cash on books','Commerce + ticketing profitable'],w:['RBI regulatory restrictions','Still loss-making','Lending business paused','Low promoter holding (9.1%)'],o:['India digital payments $10T by 2030','Lending restart post RBI clearance','Insurance distribution scale','International expansion (Japan)'],t:['PhonePe/Google Pay UPI dominance','RBI further regulatory action','Cash burn continuing','Talent attrition to competitors']},
+    insider:{buyCount:2,sellCount:5,netVal:'-₹35 Cr',netColor:'red',buyPct:29,sellPct:71,sentiment:'BEARISH',txns:[{name:'Vijay Shekhar Sharma',role:'CEO & Founder',type:'SELL',val:'₹20 Cr',date:'Mar 2026'},{name:'Executive',role:'CTO',type:'SELL',val:'₹10 Cr',date:'Feb 2026'},{name:'Madhur Deora',role:'President',type:'BUY',val:'₹5 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'PAYTM',v:'₹850',dir:'up',chg:'+2.5%'},{l:'GMV',v:'₹4.8L Cr/qtr',dir:'up',chg:'+10%'},{l:'MERCHANTS',v:'4.1 Cr',dir:'up',chg:'+15%'},{l:'LOSS',v:'₹800 Cr',dir:'down',chg:'NARROWING'},{l:'CASH',v:'₹8.5K Cr',dir:'',chg:'RUNWAY'}],
     tickerSpecial:[{l:'RBI RESTART?',v:'LENDING LICENSE WATCH',color:'red',vColor:'yellow'}],
     sectors:'PAYMENTS | FINANCIAL SERVICES | COMMERCE | MARKETING'
@@ -2576,6 +2637,7 @@ const STOCKS = {
     consensusTarget:'₹1,890', consensusUpside:'+14.5%',
     signals:[{type:'BULL',text:'India\'s #1 online insurance platform — 60% market share online'},{type:'BULL',text:'Turned profitable — operating leverage finally kicking in'},{type:'BEAR',text:'120x PE — pricing in years of perfect execution'},{type:'BEAR',text:'Bima Sugam (govt insurance marketplace) could commoditize'},{type:'NEUT',text:'Paisabazaar lending marketplace scaling well (₹25K Cr disbursal)'},{type:'NEUT',text:'UAE expansion — early but replicating India playbook'}],
     swot:{s:['#1 online insurance marketplace in India','Turned profitable — operating leverage','Data moat — 15 Cr+ annual visitors','Paisabazaar — credit marketplace leader'],w:['120x PE — very expensive','Low promoter holding (3.4%)','Profitability still thin','Dependent on insurance ad spend'],o:['Insurance penetration 3.2% → 7%','Online shift 15% → 40%','UAE/international expansion','PBPartners offline distribution'],t:['Bima Sugam government marketplace','Acko/Digit direct insurance competition','IRDAI regulatory changes','Google/Amazon insurance entry']},
+    insider:{buyCount:3,sellCount:4,netVal:'-₹12 Cr',netColor:'red',buyPct:43,sellPct:57,sentiment:'NEUTRAL',txns:[{name:'Yashish Dahiya',role:'CEO & Co-founder',type:'SELL',val:'₹15 Cr',date:'Mar 2026'},{name:'Alok Bansal',role:'CFO',type:'BUY',val:'₹4 Cr',date:'Feb 2026'},{name:'Executive',role:'VP Product',type:'SELL',val:'₹3 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'PB FINTECH',v:'₹1,650',dir:'up',chg:'+1.8%'},{l:'GWP',v:'₹12K Cr',dir:'up',chg:'+30%'},{l:'LENDING',v:'₹25K Cr Disbursed',dir:'up',chg:'+40%'},{l:'PROFITABLE',v:'TURNAROUND',dir:'up',chg:'NEW'},{l:'VISITORS',v:'15 Cr/yr',dir:'up',chg:'+20%'}],
     tickerSpecial:[{l:'PROFITABLE',v:'FIRST YEAR FY26',color:'green',vColor:'yellow'}],
     sectors:'INSURANCE MARKETPLACE | LENDING MARKETPLACE | UAE | AGENTS'
@@ -2623,6 +2685,7 @@ const STOCKS = {
     consensusTarget:'₹194', consensusUpside:'+10.9%',
     signals:[{type:'BULL',text:'India\'s #1 online beauty platform — 6,000+ brands, 25% online share'},{type:'BULL',text:'Premium beauty growing 2x market — ideal positioning'},{type:'BEAR',text:'200x PE for a company making ₹75 Cr profit — extreme valuation'},{type:'BEAR',text:'Reliance Tira + Myntra beauty threatening market share'},{type:'NEUT',text:'Fashion segment dragging profitability — needs resolution'},{type:'NEUT',text:'Private labels at 12% — margin expansion driver'}],
     swot:{s:['#1 online beauty platform in India','6,000+ brands — largest selection','Strong content + community moat','Falguni Nayar founder-led'],w:['200x PE — extremely expensive','Fashion segment loss-making','Thin profitability overall','Competition intensifying'],o:['India BPC $25B TAM — premiumization trend','Private label expansion to 20%+','Offline stores (180+) omnichannel','Men\'s grooming category'],t:['Reliance Tira launch — deep pockets competitor','Myntra/Amazon beauty push','Quick commerce for beauty basics','D2C brands going direct']},
+    insider:{buyCount:2,sellCount:3,netVal:'-₹10 Cr',netColor:'red',buyPct:40,sellPct:60,sentiment:'NEUTRAL',txns:[{name:'Falguni Nayar',role:'CEO & Founder',type:'SELL',val:'₹8 Cr',date:'Mar 2026'},{name:'Anchit Nayar',role:'CEO E-Commerce',type:'BUY',val:'₹3 Cr',date:'Feb 2026'},{name:'Executive',role:'CFO',type:'SELL',val:'₹5 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'NYKAA',v:'₹175',dir:'up',chg:'+1.5%'},{l:'GMV',v:'₹14K Cr',dir:'up',chg:'+24%'},{l:'BEAUTY REV',v:'₹5K Cr',dir:'up',chg:'+24%'},{l:'STORES',v:'180+',dir:'up',chg:'+30%'},{l:'PROFIT',v:'₹75 Cr',dir:'up',chg:'TURNAROUND'}],
     tickerSpecial:[{l:'BEAUTY #1',v:'ONLINE INDIA',color:'green',vColor:'yellow'}],
     sectors:'BEAUTY & PC | FASHION | OFFLINE STORES'
@@ -2670,6 +2733,7 @@ const STOCKS = {
     consensusTarget:'₹6,800', consensusUpside:'+23.6%',
     signals:[{type:'BULL',text:'Zudio — India\'s fastest growing fashion brand, 750+ stores, 60% growth'},{type:'BULL',text:'<18 month payback per store — incredible unit economics'},{type:'BEAR',text:'120x PE — priced for perfection, no room for miss'},{type:'BEAR',text:'Can Zudio maintain 60% growth at scale? Execution risk rises'},{type:'NEUT',text:'Westside steady at 20% growth — reliable mid-premium brand'},{type:'NEUT',text:'Tata parentage provides governance comfort'}],
     swot:{s:['Zudio — phenomenal unit economics (<18m payback)','60% revenue growth — fastest in retail','Tata Group governance & supply chain','Westside — profitable mid-premium brand'],w:['120x PE — extreme valuation','Growth deceleration risk at scale','Real estate availability constraint','Limited online presence'],o:['India fashion retail $100B TAM','Value fashion segment exploding','Organized retail 12%→25%','International expansion potential'],t:['Reliance Trends/Shein competition','Fashion trend risk','Store execution slowdown','Consumer spending slowdown']},
+    insider:{buyCount:4,sellCount:1,netVal:'+₹30 Cr',netColor:'green',buyPct:80,sellPct:20,sentiment:'BULLISH',txns:[{name:'Tata Sons',role:'Promoter',type:'BUY',val:'₹20 Cr',date:'Mar 2026'},{name:'P Venkatesalu',role:'CEO',type:'BUY',val:'₹8 Cr',date:'Feb 2026'},{name:'Executive',role:'VP',type:'SELL',val:'₹2 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'TRENT',v:'₹5,500',dir:'up',chg:'+1.5%'},{l:'ZUDIO',v:'750+ STORES',dir:'up',chg:'+60%'},{l:'REVENUE',v:'₹16.5K Cr',dir:'up',chg:'+45%'},{l:'SSSG',v:'+18%',dir:'up',chg:'STRONG'},{l:'PROFIT',v:'₹1,650 Cr',dir:'up',chg:'+60%'}],
     tickerSpecial:[{l:'ZUDIO 1000',v:'FY27 TARGET',color:'green',vColor:'yellow'}],
     sectors:'ZUDIO (VALUE) | WESTSIDE (MID) | STAR BAZAAR | UTSA'
@@ -2717,6 +2781,7 @@ const STOCKS = {
     consensusTarget:'₹5,400', consensusUpside:'+20.0%',
     signals:[{type:'BULL',text:'63% domestic market share — unprecedented airline dominance'},{type:'BULL',text:'India aviation at 0.08 trips/person — massive growth runway'},{type:'BEAR',text:'Fuel prices = 40% of costs — uncontrollable variable'},{type:'BEAR',text:'Air India Tata merger creating well-funded competitor'},{type:'NEUT',text:'500+ aircraft on order from Airbus — biggest order in Indian aviation'},{type:'NEUT',text:'International expansion to 35+ cities — higher yield routes'}],
     swot:{s:['63% domestic market share','Lowest CASK in India','380+ aircraft fleet','500+ Airbus order — growth locked in'],w:['Fuel price exposure (40% of costs)','High lease liabilities (₹52K Cr)','Pratt & Whitney engine issues','Cyclical business'],o:['India aviation 0.08 trips/person (vs 2.8 US)','International expansion (35+ cities)','Cargo business high-margin','200+ new airports planned'],t:['Air India (Tata) merger — real competitor','Fuel price spikes','Global recession impact on travel','Engine supply chain delays']},
+    insider:{buyCount:2,sellCount:2,netVal:'+₹5 Cr',netColor:'green',buyPct:50,sellPct:50,sentiment:'NEUTRAL',txns:[{name:'Pieter Elbers',role:'CEO',type:'BUY',val:'₹8 Cr',date:'Mar 2026'},{name:'Gaurav Negi',role:'CFO',type:'SELL',val:'₹5 Cr',date:'Feb 2026'},{name:'Executive',role:'COO',type:'BUY',val:'₹3 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'INDIGO',v:'₹4,500',dir:'up',chg:'+1.5%'},{l:'MARKET SHARE',v:'63%',dir:'',chg:'#1 INDIA'},{l:'FLEET',v:'380+',dir:'up',chg:'+12%'},{l:'PAX/YR',v:'11 Cr+',dir:'up',chg:'+20%'},{l:'NET PROFIT',v:'₹9.8K Cr',dir:'up',chg:'+35%'}],
     tickerSpecial:[{l:'500 AIRCRAFT',v:'ORDER BOOK',color:'orange',vColor:'yellow'}],
     sectors:'DOMESTIC | INTERNATIONAL | CARGO'
@@ -2765,6 +2830,7 @@ const STOCKS = {
     consensusTarget:'₹1,988', consensusUpside:'+7.5%',
     signals:[{type:'BULL',text:'Best NIM in banking (5.2%) — premium pricing power'},{type:'BULL',text:'Subsidiary portfolio (AMC + Insurance + Wealth) worth ₹1L Cr+'},{type:'BEAR',text:'Premium valuation (22x PE) vs ICICI/HDFC at 18x'},{type:'BEAR',text:'RBI had banned new app customers — regulatory risk precedent'},{type:'NEUT',text:'Promoter at 26% — dilution over time per RBI norms'},{type:'NEUT',text:'47% CASA ratio — best liability franchise'}],
     swot:{s:['Highest NIM in banking (5.2%)','47% CASA ratio — best in class','Subsidiary portfolio (AMC, Insurance, Wealth)','Premium brand positioning'],w:['Premium valuation (22x PE)','RBI regulatory friction history','Promoter dilution requirement','Slower growth vs ICICI'],o:['India wealth management $1T TAM','AMC industry growing 15% CAGR','Premium banking demand rising','Digital (811) customer acquisition'],t:['ICICI/HDFC Bank catching up','RBI regulatory actions','Rate compression on NIM','Promoter stake dilution']},
+    insider:{buyCount:3,sellCount:2,netVal:'+₹40 Cr',netColor:'green',buyPct:60,sellPct:40,sentiment:'NEUTRAL',txns:[{name:'Uday Kotak',role:'Promoter',type:'BUY',val:'₹35 Cr',date:'Mar 2026'},{name:'Ashok Vaswani',role:'CEO & MD',type:'BUY',val:'₹8 Cr',date:'Feb 2026'},{name:'Executive',role:'Deputy CEO',type:'SELL',val:'₹5 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'KOTAK',v:'₹1,850',dir:'up',chg:'+0.5%'},{l:'NIM',v:'5.2%',dir:'',chg:'BEST IN CLASS'},{l:'CASA',v:'47%',dir:'',chg:'#1'},{l:'AMC AUM',v:'₹4.5L Cr',dir:'up',chg:'+20%'},{l:'NET PROFIT',v:'₹16.5K Cr',dir:'up',chg:'+14%'}],
     tickerSpecial:[{l:'SUBSIDIARY VALUE',v:'₹1L Cr+',color:'orange',vColor:'yellow'}],
     sectors:'RETAIL BANKING | CORPORATE | AMC/INSURANCE | WEALTH'
@@ -2813,6 +2879,7 @@ const STOCKS = {
     consensusTarget:'$5-7B IPO', consensusUpside:'IPO Expected 2026-27',
     signals:[{type:'BULL',text:'100 Cr+ app downloads — India\'s most downloaded shopping app'},{type:'BULL',text:'18 Cr monthly orders — only behind Flipkart/Amazon in volume'},{type:'BEAR',text:'UNLISTED — no public market liquidity, IPO timing uncertain'},{type:'BEAR',text:'Low AOV (₹280) makes unit economics challenging'},{type:'NEUT',text:'Near profitability — first quarter profit reported Q3 FY25'},{type:'NEUT',text:'Ad revenue (Meesho Ads) becoming high-margin revenue stream'}],
     swot:{s:['100 Cr+ downloads — massive reach','15 Lakh sellers — largest marketplace for MSMEs','Tier 2/3 India dominance','Near-zero customer acquisition cost via social'],w:['Low AOV (₹280) — thin economics','High returns rate (15-20%)','Not yet profitable at scale','Seller quality inconsistency'],o:['India e-commerce $150B → $350B','Value commerce fastest segment','Ad monetization ($2K Cr potential)','Grocery/new category expansion'],t:['Flipkart Shopsy (value arm)','Amazon Bazaar competing','JioMart + Reliance Retail','Regulatory changes on e-commerce']},
+    insider:{buyCount:0,sellCount:0,netVal:'N/A',netColor:'yellow',buyPct:50,sellPct:50,sentiment:'NEUTRAL',txns:[{name:'Vidit Aatrey',role:'CEO & Founder',type:'BUY',val:'PRIVATE',date:'Pre-IPO'}]},
     tickerItems:[{l:'MEESHO',v:'$4.2B',dir:'up',chg:'PRIVATE'},{l:'GMV',v:'₹52K Cr',dir:'up',chg:'+35%'},{l:'ORDERS',v:'18 Cr/month',dir:'up',chg:'+30%'},{l:'SELLERS',v:'15 Lakh+',dir:'up',chg:'+25%'},{l:'DOWNLOADS',v:'100 Cr+',dir:'',chg:'#1 APP'},{l:'REVENUE',v:'₹7.5K Cr',dir:'up',chg:'+35%'}],
     tickerSpecial:[{l:'IPO WATCH',v:'H2 2026 EXPECTED',color:'orange',vColor:'yellow'},{l:'PROFITABLE?',v:'NEAR BREAKEVEN',dir:'',chg:''}],
     sectors:'FASHION | HOME & KITCHEN | BPC | GROCERY'
@@ -2861,6 +2928,7 @@ const STOCKS = {
     consensusTarget:'$3-4B IPO', consensusUpside:'IPO Expected 2026-27',
     signals:[{type:'BULL',text:'India\'s only scaled home services platform — 55K+ trained partners'},{type:'BULL',text:'70%+ repeat rate — strongest retention in India consumer tech'},{type:'BEAR',text:'UNLISTED — no public market liquidity, pre-IPO risk'},{type:'BEAR',text:'Gig worker regulation risk — potential labor law impact'},{type:'NEUT',text:'International expansion to UAE/Saudi — high-potential but early'},{type:'NEUT',text:'Near profitability — Q3 FY25 was first EBITDA-positive quarter'}],
     swot:{s:['#1 home services app in India','55K+ trained service partners','70%+ repeat rate — habit forming','UC Academy — supply quality moat'],w:['Pre-profit at scale','City-by-city scaling is slow','Gig worker classification risk','Small revenue base (₹2.2K Cr)'],o:['India home services $15B → $50B','Urban India 10 Cr+ households','International (UAE/Saudi/Singapore)','New categories (painting, interiors)'],t:['Gig worker labor laws','Local competition in each city','Amazon/Flipkart home services','Economic slowdown impacting discretionary']},
+    insider:{buyCount:0,sellCount:0,netVal:'N/A',netColor:'yellow',buyPct:50,sellPct:50,sentiment:'NEUTRAL',txns:[{name:'Abhiraj Bhal',role:'CEO & Co-founder',type:'BUY',val:'PRIVATE',date:'Pre-IPO'}]},
     tickerItems:[{l:'URBAN CO',v:'$2.6B',dir:'up',chg:'PRIVATE'},{l:'BOOKINGS',v:'40L+/month',dir:'up',chg:'+28%'},{l:'PARTNERS',v:'55,000+',dir:'up',chg:'+25%'},{l:'CITIES',v:'55+',dir:'up',chg:'+15'},{l:'REVENUE',v:'₹2.2K Cr',dir:'up',chg:'+30%'},{l:'REPEAT',v:'70%+',dir:'',chg:'STRONG'}],
     tickerSpecial:[{l:'IPO WATCH',v:'H2 2026 EXPECTED',color:'orange',vColor:'yellow'},{l:'INTL PUSH',v:'UAE + SAUDI + SG',dir:'',chg:''}],
     sectors:'BEAUTY & WELLNESS | HOME REPAIR | CLEANING | INTERNATIONAL'
@@ -2910,9 +2978,260 @@ const STOCKS = {
     consensusTarget:'₹850', consensusUpside:'+11.5%',
     signals:[{type:'BULL',text:'Only full-stack EV 2W company in India — battery + software + hardware in-house'},{type:'BULL',text:'Revenue growing 50%+ YoY — fastest in EV 2W segment'},{type:'BULL',text:'Factory 3.0 (1M capacity) coming online Jul 2026 — massive scale-up'},{type:'BEAR',text:'Still loss-making — ₹651 Cr loss in FY25, cash burn continues'},{type:'BEAR',text:'Intense competition from Ola, TVS, Bajaj all fighting for EV 2W share'},{type:'NEUT',text:'EL platform + motorcycle (Zenith) launch could open new TAM segments'}],
     swot:{s:['Full-stack vertical integration (battery+SW+HW)','Premium brand positioning — highest ASP in segment','2,200+ Ather Grid charging network','Strong R&D — in-house BMS, motor, software'],w:['Loss-making — negative ROE/ROCE','Single manufacturing facility (Hosur)','Limited model range vs competitors','High dependence on FAME subsidies'],o:['India EV 2W penetration 6% → 40%+','Factory 3.0 — 1M units capacity by FY28','EL platform — motorcycle + new scooter models','Export potential to SE Asia, Africa'],t:['Ola Electric aggressive pricing war','Legacy OEMs (TVS, Bajaj, Hero) scaling EV fast','FAME III subsidy reduction risk','Battery cost volatility — lithium prices']},
+    insider:{buyCount:4,sellCount:2,netVal:'+₹25 Cr',netColor:'green',buyPct:67,sellPct:33,sentiment:'BULLISH',txns:[{name:'Tarun Mehta',role:'CEO & Co-founder',type:'BUY',val:'₹15 Cr',date:'Mar 2026'},{name:'Swapnil Jain',role:'CTO & Co-founder',type:'BUY',val:'₹8 Cr',date:'Feb 2026'},{name:'Executive',role:'VP Ops',type:'SELL',val:'₹3 Cr',date:'Jan 2026'}]},
     tickerItems:[{l:'ATHERENERG',v:'₹762',dir:'up',chg:'+1.5%'},{l:'MCAP',v:'₹29K Cr',dir:'up',chg:'IPO ₹321'},{l:'REV',v:'₹2.3K Cr',dir:'up',chg:'+50%'},{l:'UNITS',v:'5L+ sold',dir:'up',chg:'+40%'},{l:'CAPACITY',v:'4.2L/yr',dir:'up',chg:'→14L'},{l:'GRID',v:'2,200+',dir:'up',chg:'CHARGING'}],
     tickerSpecial:[{l:'EV PLAY',v:'PREMIUM 2W LEADER',color:'#0ff',vColor:'#0f0'},{l:'FACTORY 3.0',v:'JUL 2026 LIVE',color:'orange',vColor:'yellow'}],
     sectors:'E-SCOOTERS | CHARGING INFRA | BATTERY TECH | R&D'
+  },
+
+  AETHER: {
+    name:'AETHER INDUSTRIES LTD', ticker:'AETHER', sector:'SPECIALTY CHEMICALS', verdict:'BUY', verdictColor:'green',
+    price:1025, change:1.8, changeAbs:18.1, mcap:'₹0.14L Cr', mcapUSD:'~$1.6B', w52:'₹680 — ₹1,225',
+    pe:'76.2x', pb:'8.5x', evEbitda:'48x', roe:'7.1%', roeColor:'yellow', roce:'9.9%', roceColor:'yellow', de:'0.12', divYield:'0.2%', bookVal:'₹121', faceVal:'₹10',
+    promoter:75.0, dii:12.3, fii:5.8, pub:6.9, pledge:'0.00%', govt:'0.00%', fiiTrend:'+0.5% QoQ', fiiDir:'up', diiTrend:'+0.8% QoQ', diiDir:'up',
+    revenue:'₹880 Cr', ebitda:'₹240 Cr', profit:'₹158 Cr', eps:'₹13.5', fcf:'₹80 Cr', debt:'₹120 Cr',
+    revYoY:'+38%', ebitdaYoY:'+42%', profitYoY:'+55%', epsYoY:'+55%', fcfYoY:'+30%', debtYoY:'Stable',
+    capexLatest:'₹250 Cr', capexGrowth:'+35% YoY', capex5Y:'₹850 Cr', capex5YUSD:'~$100M deployed',
+    capexBars:[25,35,50,70,90], capexLabels:['FY21','FY22','FY23','FY24','FY25'],
+    capexVals:['₹60Cr','₹100Cr','₹150Cr','₹200Cr','₹250Cr'], capexColors:['green','green','green','cyan','cyan'],
+    capexAlloc:[{name:'New Plant (Phase 3)',pct:45,color:'cyan'},{name:'R&D Labs',pct:25,color:'green'},{name:'CRAMS Expansion',pct:20,color:'yellow'},{name:'Tech/Others',pct:10,color:'orange'}],
+    capexRatios:[{l:'Capex/Revenue',v:'28.4%',c:'yellow'},{l:'Capex/EBITDA',v:'104%',c:'red'},{l:'FCF Yield',v:'0.6%'},{l:'ROIC',v:'8.5%',c:'yellow'}],
+    gbLatest:'₹650 Cr', gbLatestColor:'magenta', gbGrowth:'+30% YoY', gbNet:'₹480 Cr', gbDepr:'Depreciation: ₹170 Cr',
+    gbBars:[15,25,35,50,70], gbLabels:['FY21','FY22','FY23','FY24','FY25'],
+    gbVals:['₹150Cr','₹250Cr','₹380Cr','₹500Cr','₹650Cr'],
+    gbCAGR:'44%', gb1Y:'30%', gbMult:'4.3x',
+    gbRatios:[{l:'Asset Turnover',v:'1.05x'},{l:'Fixed Asset Turnover',v:'1.35x'},{l:'Depreciation Rate',v:'~8%',c:'yellow'},{l:'Utilisation',v:'~72%',c:'green'}],
+    segments:[
+      {icon:'🧪',name:'LARGE SCALE MFG',rev:'₹440 Cr',growth:'+35% YoY',rows:[{l:'Revenue Share',v:'50%'},{l:'Specialty APIs',v:'Key driver',c:'green'},{l:'Capacity',v:'Expanding'},{l:'Clients',v:'Global Pharma',c:'cyan'}],margin:'28%',meterPct:70,meterColor:'green'},
+      {icon:'🔬',name:'CRAMS (Contract Mfg)',rev:'₹265 Cr',growth:'+45% YoY',rows:[{l:'Revenue Share',v:'30%'},{l:'Clients',v:'Innovator Pharma',c:'cyan'},{l:'Pipeline',v:'Growing Fast',c:'green'},{l:'Margins',v:'Premium',c:'green'}],margin:'35%',meterPct:80,meterColor:'cyan'},
+      {icon:'⚗️',name:'CONTRACT RESEARCH',rev:'₹88 Cr',growth:'+50% YoY',rows:[{l:'Revenue Share',v:'10%'},{l:'Type',v:'R&D Services',c:'cyan'},{l:'Patents',v:'50+ filed'},{l:'Growth',v:'Fastest Seg',c:'green'}],margin:'40%',meterPct:75,meterColor:'green'},
+      {icon:'🏭',name:'OTHER CHEMICALS',rev:'₹88 Cr',growth:'+20% YoY',rows:[{l:'Revenue Share',v:'10%'},{l:'Type',v:'Agrochem/Coating'},{l:'Diversification',v:'Growing'},{l:'Margin',v:'Moderate',c:'yellow'}],margin:'22%',meterPct:55,meterColor:'yellow'}
+    ],
+    revMix:[{name:'Large Scale',pct:50,color:'green'},{name:'CRAMS',pct:30,color:'cyan'},{name:'Research',pct:10,color:'yellow'},{name:'Others',pct:10,color:'orange'}],
+    ebitdaMix:[{name:'CRAMS',pct:40,color:'cyan'},{name:'Large Scale',pct:35,color:'green'},{name:'Research',pct:15,color:'yellow'},{name:'Others',pct:10,color:'orange'}],
+    projections:[
+      {horizon:'3Y (2029)',target:'₹1,600-1,900',upside:'+56-85%',cagr:'16-23%',drivers:'CRAMS ramp-up, Phase 3 plant, margin expansion',conf:65,confColor:'green'},
+      {horizon:'5Y (2031)',target:'₹2,500-3,200',upside:'+144-212%',cagr:'20-26%',drivers:'Global CDMO market share, patent filings',conf:55,confColor:'cyan'},
+      {horizon:'10Y (2036)',target:'₹5,000-7,500',upside:'+388-632%',cagr:'17-22%',drivers:'India China+1 beneficiary, specialty chem leader',conf:40,confColor:'yellow'},
+      {horizon:'15Y (2041)',target:'₹8,000-14,000',upside:'+680-1,266%',cagr:'15-19%',drivers:'Full-scale CDMO, global specialty leader',conf:30,confColor:'orange'}
+    ],
+    projChart:[{label:'NOW',val:'₹1,025',pct:13,color:'cyan'},{label:'3Y',val:'₹1,750',pct:22,color:'green'},{label:'5Y',val:'₹2,850',pct:36,color:'green'},{label:'10Y',val:'₹6,250',pct:79,color:'yellow'},{label:'15Y',val:'₹11,000',pct:100,color:'orange'}],
+    tam:[{val:'$180B',label:'GLOBAL SPECIALTY CHEM',share:'Aether Share: <0.1%',shareColor:'yellow'},{val:'$65B',label:'GLOBAL CDMO/CRAMS',share:'Target: 0.5%+',shareColor:'green'},{val:'$30B',label:'INDIA CHEM EXPORTS',share:'Growing Fast',shareColor:'cyan'}],
+    gdp:[{l:'China+1 Shift',v:'Active',c:'green'},{l:'PLI Scheme',v:'Chemicals eligible',c:'cyan'},{l:'India Chem GDP',v:'~2.5%'}],
+    moat:[{l:'R&D Capability',v:'★★★★☆'},{l:'Patent Portfolio',v:'★★★★☆'},{l:'Client Lock-in',v:'★★★★☆'},{l:'Scale',v:'★★☆☆☆'}],
+    conviction:[{name:'CRAMS Growth',pct:82,color:'green'},{name:'Capacity Expansion',pct:75,color:'cyan'},{name:'Margin Expansion',pct:65,color:'yellow'},{name:'Valuation Risk',pct:60,color:'red'}],
+    riskLevel:'MODERATE', riskActive:3,
+    risks:[{l:'Rich Valuation (76x PE)',v:'HIGH',t:'hot'},{l:'Capacity Execution',v:'MED',t:'hold'},{l:'Client Concentration',v:'MED',t:'hold'},{l:'Currency Fluctuation',v:'LOW',t:'info'},{l:'Raw Material Costs',v:'MED',t:'hold'},{l:'Competition',v:'LOW',t:'info'}],
+    catalysts:[{date:'FY26',dateColor:'cyan',tag:'HOT',tagClass:'hot',text:'Phase 3 plant commissioning — capacity doubles'},{date:'FY26',dateColor:'green',tag:'NEW',tagClass:'buy',text:'New CRAMS contracts with global innovators'},{date:'FY27',dateColor:'yellow',tag:'TGT',tagClass:'info',text:'Revenue ₹1,200 Cr+ target — 35% CAGR'},{date:'2028',dateColor:'green',tag:'GOAL',tagClass:'buy',text:'₹2,000 Cr revenue milestone'}],
+    peers:[{name:'AETHER ●',mcap:'₹0.14L',pe:'76x',roe:'7.1%',roeColor:'yellow',highlight:true},{name:'SRF LTD',mcap:'₹0.72L',pe:'42x',roe:'14%',roeColor:'green'},{name:'NAVIN FLUOR',mcap:'₹0.28L',pe:'35x',roe:'16%',roeColor:'green'},{name:'CLEAN SCIENCE',mcap:'₹0.18L',pe:'55x',roe:'22%',roeColor:'green'},{name:'PI INDUSTRIES',mcap:'₹0.55L',pe:'32x',roe:'18%',roeColor:'green'}],
+    analysts:[{name:'ICICI Securities',rating:'BUY',rClass:'buy',target:'₹1,200'},{name:'HDFC Securities',rating:'BUY',rClass:'buy',target:'₹1,150'},{name:'Motilal Oswal',rating:'BUY',rClass:'buy',target:'₹1,180'},{name:'Kotak Inst.',rating:'HOLD',rClass:'hold',target:'₹1,050'},{name:'Axis Capital',rating:'BUY',rClass:'buy',target:'₹1,250'}],
+    consensusTarget:'₹1,170', consensusUpside:'+14.1%',
+    signals:[{type:'BULL',text:'CRAMS business growing 45% YoY — highest margin segment scaling'},{type:'BULL',text:'China+1 beneficiary — global pharma shifting API sourcing to India'},{type:'BULL',text:'Phase 3 plant will double capacity — revenue inflection ahead'},{type:'BEAR',text:'PE at 76x is expensive — needs strong execution to justify'},{type:'BEAR',text:'Small revenue base (₹880 Cr) — execution risk on scale-up'},{type:'NEUT',text:'Promoter holding at 75% — strong commitment but low float'}],
+    swot:{s:['Strong R&D with 50+ patents filed','CRAMS growing 45% — premium margins','Zero debt practically','75% promoter holding — skin in game'],w:['PE at 76x — expensive valuation','Small revenue base (₹880 Cr)','ROE only 7.1% — improving','Single location concentration'],o:['China+1 mega trend for chemicals','CDMO market $65B+ globally','New product launches pipeline','India PLI for chemicals'],t:['Valuation compression risk','Global recession impacting pharma spend','Raw material price volatility','Larger peers scaling CRAMS']},
+    insider:{buyCount:5,sellCount:1,netVal:'+₹45 Cr',netColor:'green',buyPct:83,sellPct:17,sentiment:'BULLISH',txns:[{name:'Rohan Desai',role:'Promoter/ED',type:'BUY',val:'₹30 Cr',date:'Mar 2026'},{name:'Aman Desai',role:'Promoter/MD',type:'BUY',val:'₹12 Cr',date:'Feb 2026'},{name:'Executive',role:'CFO',type:'SELL',val:'₹2 Cr',date:'Jan 2026'}]},
+    tickerItems:[{l:'AETHER',v:'₹1,025',dir:'up',chg:'+1.8%'},{l:'MCAP',v:'₹13.6K Cr',dir:'up',chg:'+55%'},{l:'REV',v:'₹880 Cr',dir:'up',chg:'+38%'},{l:'CRAMS',v:'30% of Rev',dir:'up',chg:'+45%'},{l:'PATENTS',v:'50+',dir:'up',chg:'R&D'},{l:'PROFIT',v:'₹158 Cr',dir:'up',chg:'+55%'}],
+    tickerSpecial:[{l:'CHINA+1',v:'KEY BENEFICIARY',color:'#0ff',vColor:'#0f0'},{l:'PHASE 3',v:'CAPACITY 2X',color:'orange',vColor:'yellow'}],
+    sectors:'SPECIALTY CHEMICALS | CRAMS | CONTRACT RESEARCH | API'
+  },
+
+  SHILPAMED: {
+    name:'SHILPA MEDICARE LTD', ticker:'SHILPAMED', sector:'PHARMA / ONCOLOGY', verdict:'HOLD', verdictColor:'yellow',
+    price:332, change:0.9, changeAbs:2.95, mcap:'₹0.065L Cr', mcapUSD:'~$780M', w52:'₹210 — ₹420',
+    pe:'43.4x', pb:'2.6x', evEbitda:'28x', roe:'6.5%', roeColor:'yellow', roce:'8.2%', roceColor:'yellow', de:'0.35', divYield:'0.3%', bookVal:'₹128', faceVal:'₹2',
+    promoter:52.8, dii:15.2, fii:8.5, pub:23.5, pledge:'0.00%', govt:'0.00%', fiiTrend:'+1.2% QoQ', fiiDir:'up', diiTrend:'+0.5% QoQ', diiDir:'up',
+    revenue:'₹1,310 Cr', ebitda:'₹210 Cr', profit:'₹80 Cr', eps:'₹7.6', fcf:'₹50 Cr', debt:'₹380 Cr',
+    revYoY:'+22%', ebitdaYoY:'+30%', profitYoY:'+40%', epsYoY:'+40%', fcfYoY:'+25%', debtYoY:'-5%',
+    capexLatest:'₹180 Cr', capexGrowth:'+20% YoY', capex5Y:'₹650 Cr', capex5YUSD:'~$78M deployed',
+    capexBars:[30,40,50,65,80], capexLabels:['FY21','FY22','FY23','FY24','FY25'],
+    capexVals:['₹80Cr','₹110Cr','₹130Cr','₹150Cr','₹180Cr'], capexColors:['green','green','green','cyan','cyan'],
+    capexAlloc:[{name:'API Expansion',pct:40,color:'cyan'},{name:'Oncology Formulations',pct:30,color:'green'},{name:'Biosimilars',pct:20,color:'yellow'},{name:'R&D',pct:10,color:'orange'}],
+    capexRatios:[{l:'Capex/Revenue',v:'13.7%'},{l:'Capex/EBITDA',v:'86%',c:'yellow'},{l:'FCF Yield',v:'0.8%'},{l:'ROIC',v:'7.5%',c:'yellow'}],
+    gbLatest:'₹820 Cr', gbLatestColor:'magenta', gbGrowth:'+18% YoY', gbNet:'₹580 Cr', gbDepr:'Depreciation: ₹240 Cr',
+    gbBars:[25,35,45,60,75], gbLabels:['FY21','FY22','FY23','FY24','FY25'],
+    gbVals:['₹350Cr','₹450Cr','₹550Cr','₹700Cr','₹820Cr'],
+    gbCAGR:'24%', gb1Y:'18%', gbMult:'2.3x',
+    gbRatios:[{l:'Asset Turnover',v:'1.10x'},{l:'Fixed Asset Turnover',v:'1.60x'},{l:'Depreciation Rate',v:'~10%',c:'yellow'},{l:'Utilisation',v:'~70%',c:'yellow'}],
+    segments:[
+      {icon:'💊',name:'APIs (Active Pharma Ingredients)',rev:'₹525 Cr',growth:'+18% YoY',rows:[{l:'Revenue Share',v:'40%'},{l:'Oncology APIs',v:'Specialty',c:'cyan'},{l:'Markets',v:'US/EU/India'},{l:'ANDA Filings',v:'Growing',c:'green'}],margin:'22%',meterPct:65,meterColor:'green'},
+      {icon:'💉',name:'ONCOLOGY FORMULATIONS',rev:'₹395 Cr',growth:'+30% YoY',rows:[{l:'Revenue Share',v:'30%'},{l:'Type',v:'Specialty Onco',c:'cyan'},{l:'Geography',v:'US + India'},{l:'Pipeline',v:'Strong',c:'green'}],margin:'18%',meterPct:60,meterColor:'cyan'},
+      {icon:'🧬',name:'BIOSIMILARS',rev:'₹260 Cr',growth:'+35% YoY',rows:[{l:'Revenue Share',v:'20%'},{l:'Pipeline',v:'5 molecules',c:'green'},{l:'Stage',v:'Commercializing'},{l:'TAM',v:'$30B+ globally',c:'cyan'}],margin:'15%',meterPct:50,meterColor:'yellow'},
+      {icon:'🏭',name:'CDMO / CONTRACT MFG',rev:'₹130 Cr',growth:'+25% YoY',rows:[{l:'Revenue Share',v:'10%'},{l:'Clients',v:'Global Pharma'},{l:'Growth',v:'Scaling',c:'green'},{l:'Margins',v:'Improving'}],margin:'20%',meterPct:55,meterColor:'green'}
+    ],
+    revMix:[{name:'APIs',pct:40,color:'cyan'},{name:'Onco Form.',pct:30,color:'green'},{name:'Biosimilars',pct:20,color:'yellow'},{name:'CDMO',pct:10,color:'orange'}],
+    ebitdaMix:[{name:'APIs',pct:38,color:'cyan'},{name:'Onco Form.',pct:28,color:'green'},{name:'Biosimilars',pct:18,color:'yellow'},{name:'CDMO',pct:16,color:'orange'}],
+    projections:[
+      {horizon:'3Y (2029)',target:'₹500-600',upside:'+50-81%',cagr:'15-22%',drivers:'Biosimilar launches, oncology scale, US filings',conf:55,confColor:'cyan'},
+      {horizon:'5Y (2031)',target:'₹750-1,000',upside:'+126-201%',cagr:'18-25%',drivers:'Biosimilar commercialization, CDMO growth',conf:45,confColor:'yellow'},
+      {horizon:'10Y (2036)',target:'₹1,500-2,500',upside:'+352-653%',cagr:'16-22%',drivers:'Global oncology leader, full biosimilar portfolio',conf:35,confColor:'yellow'},
+      {horizon:'15Y (2041)',target:'₹3,000-5,000',upside:'+803-1,406%',cagr:'16-20%',drivers:'India pharma exports + specialty scale',conf:25,confColor:'orange'}
+    ],
+    projChart:[{label:'NOW',val:'₹332',pct:7,color:'cyan'},{label:'3Y',val:'₹550',pct:11,color:'green'},{label:'5Y',val:'₹875',pct:18,color:'green'},{label:'10Y',val:'₹2,000',pct:40,color:'yellow'},{label:'15Y',val:'₹4,000',pct:80,color:'orange'}],
+    tam:[{val:'$180B',label:'GLOBAL ONCOLOGY MARKET',share:'Shilpa Share: <0.1%',shareColor:'yellow'},{val:'$40B',label:'BIOSIMILARS TAM',share:'Target: 0.3%+',shareColor:'green'},{val:'$25B',label:'INDIA PHARMA EXPORTS',share:'Niche Player',shareColor:'cyan'}],
+    gdp:[{l:'India Pharma',v:'$50B+ industry',c:'green'},{l:'Oncology Growth',v:'12% CAGR',c:'cyan'},{l:'Biosimilar Wave',v:'Patent Cliff',c:'green'}],
+    moat:[{l:'Oncology Focus',v:'★★★★☆'},{l:'API Integration',v:'★★★☆☆'},{l:'Biosimilar Pipeline',v:'★★★☆☆'},{l:'Scale',v:'★★☆☆☆'}],
+    conviction:[{name:'Oncology APIs',pct:70,color:'green'},{name:'Biosimilars',pct:55,color:'cyan'},{name:'CDMO',pct:50,color:'yellow'},{name:'Valuation',pct:45,color:'orange'}],
+    riskLevel:'MODERATE', riskActive:3,
+    risks:[{l:'Biosimilar Execution',v:'HIGH',t:'hot'},{l:'US FDA Compliance',v:'MED',t:'hold'},{l:'Debt Levels',v:'MED',t:'hold'},{l:'Competition (Onco APIs)',v:'MED',t:'hold'},{l:'Currency Risk',v:'LOW',t:'info'},{l:'Client Concentration',v:'LOW',t:'info'}],
+    catalysts:[{date:'FY26',dateColor:'cyan',tag:'HOT',tagClass:'hot',text:'Biosimilar commercial launches — revenue inflection'},{date:'FY26',dateColor:'green',tag:'NEW',tagClass:'buy',text:'New US ANDA approvals for oncology generics'},{date:'FY27',dateColor:'yellow',tag:'TGT',tagClass:'info',text:'Revenue ₹1,800 Cr target — scale benefits'},{date:'2028',dateColor:'green',tag:'GOAL',tagClass:'buy',text:'Debt-free target — margin expansion'}],
+    peers:[{name:'SHILPA MED ●',mcap:'₹6.5K',pe:'43x',roe:'6.5%',roeColor:'yellow',highlight:true},{name:'NATCO PHARMA',mcap:'₹0.18L',pe:'18x',roe:'15%',roeColor:'green'},{name:'BIOCON',mcap:'₹0.35L',pe:'65x',roe:'5%',roeColor:'yellow'},{name:'LAURUS LABS',mcap:'₹0.28L',pe:'38x',roe:'12%',roeColor:'green'},{name:'SUVEN PHARMA',mcap:'₹0.22L',pe:'42x',roe:'8%',roeColor:'yellow'}],
+    analysts:[{name:'ICICI Securities',rating:'BUY',rClass:'buy',target:'₹400'},{name:'Motilal Oswal',rating:'BUY',rClass:'buy',target:'₹380'},{name:'HDFC Securities',rating:'HOLD',rClass:'hold',target:'₹350'},{name:'Kotak Inst.',rating:'BUY',rClass:'buy',target:'₹420'},{name:'Axis Capital',rating:'HOLD',rClass:'hold',target:'₹340'}],
+    consensusTarget:'₹378', consensusUpside:'+13.9%',
+    signals:[{type:'BULL',text:'Biosimilar pipeline with 5 molecules — massive TAM unlock ahead'},{type:'BULL',text:'Oncology formulations growing 30% — specialty niche'},{type:'BULL',text:'Profit growth 40% YoY — operating leverage kicking in'},{type:'BEAR',text:'PE at 43x with only 6.5% ROE — needs significant improvement'},{type:'BEAR',text:'Debt of ₹380 Cr — needs monitoring as capex continues'},{type:'NEUT',text:'US FDA inspections — key risk/catalyst for formulations business'}],
+    swot:{s:['Oncology API specialization — niche moat','Biosimilar pipeline — 5 molecules','Integrated API + Formulation','Growing US presence'],w:['Low ROE at 6.5%','Debt ₹380 Cr','Small scale vs peers','Biosimilar execution unproven'],o:['Biosimilar patent cliff — $40B TAM','India pharma exports growing','CDMO outsourcing wave','Oncology spend growing 12% CAGR'],t:['US FDA regulatory risk','Competition from Biocon/Laurus','Currency fluctuation','API price erosion']},
+    insider:{buyCount:3,sellCount:2,netVal:'+₹8 Cr',netColor:'green',buyPct:60,sellPct:40,sentiment:'NEUTRAL',txns:[{name:'Vishnukant Bhutada',role:'Promoter/MD',type:'BUY',val:'₹5 Cr',date:'Mar 2026'},{name:'Executive',role:'CFO',type:'SELL',val:'₹2 Cr',date:'Feb 2026'},{name:'Board Member',role:'Director',type:'BUY',val:'₹3 Cr',date:'Jan 2026'}]},
+    tickerItems:[{l:'SHILPAMED',v:'₹332',dir:'up',chg:'+0.9%'},{l:'MCAP',v:'₹6.5K Cr',dir:'up',chg:'+40%'},{l:'REV',v:'₹1.3K Cr',dir:'up',chg:'+22%'},{l:'ONCO',v:'30% of Rev',dir:'up',chg:'+30%'},{l:'BIOSIM',v:'5 molecules',dir:'up',chg:'PIPELINE'},{l:'PROFIT',v:'₹80 Cr',dir:'up',chg:'+40%'}],
+    tickerSpecial:[{l:'ONCOLOGY',v:'NICHE SPECIALTY',color:'#0ff',vColor:'#0f0'},{l:'BIOSIMILAR',v:'PIPELINE PLAY',color:'orange',vColor:'yellow'}],
+    sectors:'ONCOLOGY APIs | FORMULATIONS | BIOSIMILARS | CDMO'
+  },
+
+  ALIVUS: {
+    name:'ALIVUS LIFE SCIENCES LTD', ticker:'ALIVUS', sector:'PHARMA / API', verdict:'BUY', verdictColor:'green',
+    price:990, change:0.6, changeAbs:5.9, mcap:'₹0.12L Cr', mcapUSD:'~$1.5B', w52:'₹819 — ₹1,225',
+    pe:'22.3x', pb:'4.0x', evEbitda:'16x', roe:'17.0%', roeColor:'green', roce:'22.0%', roceColor:'green', de:'0.02', divYield:'0.8%', bookVal:'₹247', faceVal:'₹2',
+    promoter:49.8, dii:18.5, fii:12.2, pub:19.5, pledge:'0.00%', govt:'0.00%', fiiTrend:'+0.8% QoQ', fiiDir:'up', diiTrend:'+0.3% QoQ', diiDir:'up',
+    revenue:'₹2,400 Cr', ebitda:'₹720 Cr', profit:'₹540 Cr', eps:'₹44.4', fcf:'₹480 Cr', debt:'₹25 Cr',
+    revYoY:'+18%', ebitdaYoY:'+22%', profitYoY:'+25%', epsYoY:'+25%', fcfYoY:'+20%', debtYoY:'Near Zero',
+    capexLatest:'₹150 Cr', capexGrowth:'+15% YoY', capex5Y:'₹550 Cr', capex5YUSD:'~$66M deployed',
+    capexBars:[30,40,50,60,75], capexLabels:['FY21','FY22','FY23','FY24','FY25'],
+    capexVals:['₹60Cr','₹85Cr','₹110Cr','₹130Cr','₹150Cr'], capexColors:['green','green','green','cyan','cyan'],
+    capexAlloc:[{name:'API Capacity',pct:50,color:'cyan'},{name:'CDMO Facility',pct:25,color:'green'},{name:'R&D',pct:15,color:'yellow'},{name:'Maintenance',pct:10,color:'orange'}],
+    capexRatios:[{l:'Capex/Revenue',v:'6.3%'},{l:'Capex/EBITDA',v:'20.8%',c:'green'},{l:'FCF Yield',v:'4.0%',c:'green'},{l:'ROIC',v:'20%',c:'green'}],
+    gbLatest:'₹480 Cr', gbLatestColor:'magenta', gbGrowth:'+15% YoY', gbNet:'₹350 Cr', gbDepr:'Depreciation: ₹130 Cr',
+    gbBars:[25,35,45,60,70], gbLabels:['FY21','FY22','FY23','FY24','FY25'],
+    gbVals:['₹200Cr','₹270Cr','₹340Cr','₹420Cr','₹480Cr'],
+    gbCAGR:'24%', gb1Y:'15%', gbMult:'2.4x',
+    gbRatios:[{l:'Asset Turnover',v:'2.20x',c:'green'},{l:'Fixed Asset Turnover',v:'5.0x',c:'green'},{l:'Depreciation Rate',v:'~9%'},{l:'Utilisation',v:'~80%',c:'green'}],
+    segments:[
+      {icon:'💊',name:'CHRONIC THERAPY APIs',rev:'₹1,440 Cr',growth:'+20% YoY',rows:[{l:'Revenue Share',v:'60%'},{l:'Therapies',v:'CVS/CNS/Diabetes',c:'cyan'},{l:'Markets',v:'Global'},{l:'Quality',v:'US FDA Approved',c:'green'}],margin:'32%',meterPct:80,meterColor:'green'},
+      {icon:'🔬',name:'CDMO SERVICES',rev:'₹480 Cr',growth:'+25% YoY',rows:[{l:'Revenue Share',v:'20%'},{l:'Clients',v:'Global Innovators',c:'cyan'},{l:'Pipeline',v:'Growing',c:'green'},{l:'Margin',v:'Premium',c:'green'}],margin:'35%',meterPct:75,meterColor:'cyan'},
+      {icon:'⚗️',name:'INTERMEDIATES',rev:'₹360 Cr',growth:'+12% YoY',rows:[{l:'Revenue Share',v:'15%'},{l:'Type',v:'Advanced Intermediates'},{l:'Clients',v:'Pharma Cos'},{l:'Growth',v:'Steady'}],margin:'25%',meterPct:60,meterColor:'yellow'},
+      {icon:'🧪',name:'OTHER / NEW MOLECULES',rev:'₹120 Cr',growth:'+30% YoY',rows:[{l:'Revenue Share',v:'5%'},{l:'R&D Pipeline',v:'8 molecules',c:'green'},{l:'Stage',v:'Early Revenue'},{l:'Potential',v:'High',c:'cyan'}],margin:'20%',meterPct:45,meterColor:'yellow'}
+    ],
+    revMix:[{name:'Chronic APIs',pct:60,color:'green'},{name:'CDMO',pct:20,color:'cyan'},{name:'Intermediates',pct:15,color:'yellow'},{name:'Others',pct:5,color:'orange'}],
+    ebitdaMix:[{name:'Chronic APIs',pct:50,color:'green'},{name:'CDMO',pct:30,color:'cyan'},{name:'Intermediates',pct:15,color:'yellow'},{name:'Others',pct:5,color:'orange'}],
+    projections:[
+      {horizon:'3Y (2029)',target:'₹1,400-1,700',upside:'+41-72%',cagr:'12-20%',drivers:'CDMO scale-up, API capacity expansion, new molecules',conf:70,confColor:'green'},
+      {horizon:'5Y (2031)',target:'₹2,000-2,800',upside:'+102-183%',cagr:'15-23%',drivers:'Global API leader, CDMO margin expansion',conf:60,confColor:'green'},
+      {horizon:'10Y (2036)',target:'₹4,000-6,000',upside:'+304-506%',cagr:'15-20%',drivers:'India pharma export boom, specialty molecule portfolio',conf:45,confColor:'yellow'},
+      {horizon:'15Y (2041)',target:'₹7,000-12,000',upside:'+607-1,112%',cagr:'14-18%',drivers:'Global CDMO + API platform company',conf:35,confColor:'orange'}
+    ],
+    projChart:[{label:'NOW',val:'₹990',pct:8,color:'cyan'},{label:'3Y',val:'₹1,550',pct:13,color:'green'},{label:'5Y',val:'₹2,400',pct:20,color:'green'},{label:'10Y',val:'₹5,000',pct:42,color:'yellow'},{label:'15Y',val:'₹9,500',pct:79,color:'orange'}],
+    tam:[{val:'$200B',label:'GLOBAL API MARKET',share:'Alivus Share: ~0.1%',shareColor:'yellow'},{val:'$65B',label:'CDMO TAM',share:'Growing Share',shareColor:'green'},{val:'$25B',label:'INDIA PHARMA EXPORTS',share:'Key Player',shareColor:'cyan'}],
+    gdp:[{l:'India Pharma',v:'Pharmacy of World',c:'green'},{l:'API Self-Reliance',v:'Govt Priority',c:'cyan'},{l:'Export Growth',v:'15% CAGR'}],
+    moat:[{l:'Chronic API Expertise',v:'★★★★☆'},{l:'Near-Zero Debt',v:'★★★★★'},{l:'CDMO Capability',v:'★★★☆☆'},{l:'Process Chemistry',v:'★★★★☆'}],
+    conviction:[{name:'API Business',pct:82,color:'green'},{name:'CDMO Growth',pct:70,color:'cyan'},{name:'Debt-Free',pct:95,color:'green'},{name:'Valuation',pct:75,color:'green'}],
+    riskLevel:'LOW', riskActive:2,
+    risks:[{l:'API Price Erosion',v:'MED',t:'hold'},{l:'Glenmark Demerger Risk',v:'LOW',t:'info'},{l:'Competition',v:'MED',t:'hold'},{l:'Regulatory (US FDA)',v:'MED',t:'hold'},{l:'Currency Fluctuation',v:'LOW',t:'info'},{l:'Client Concentration',v:'LOW',t:'info'}],
+    catalysts:[{date:'FY26',dateColor:'cyan',tag:'HOT',tagClass:'hot',text:'New CDMO contracts — margin expansion'},{date:'FY26',dateColor:'green',tag:'NEW',tagClass:'buy',text:'New molecule launches from R&D pipeline'},{date:'FY27',dateColor:'yellow',tag:'TGT',tagClass:'info',text:'Revenue ₹3,000 Cr milestone target'},{date:'2028',dateColor:'green',tag:'GOAL',tagClass:'buy',text:'CDMO 30%+ of revenue — mix improvement'}],
+    peers:[{name:'ALIVUS ●',mcap:'₹0.12L',pe:'22x',roe:'17%',roeColor:'green',highlight:true},{name:'DIVIS LABS',mcap:'₹1.5L',pe:'55x',roe:'18%',roeColor:'green'},{name:'LAURUS LABS',mcap:'₹0.28L',pe:'38x',roe:'12%',roeColor:'green'},{name:'SOLARA ACTIVE',mcap:'₹3.5K',pe:'25x',roe:'8%',roeColor:'yellow'},{name:'AARTI DRUGS',mcap:'₹4.8K',pe:'20x',roe:'14%',roeColor:'green'}],
+    analysts:[{name:'ICICI Securities',rating:'BUY',rClass:'buy',target:'₹1,150'},{name:'HDFC Securities',rating:'BUY',rClass:'buy',target:'₹1,100'},{name:'Motilal Oswal',rating:'BUY',rClass:'buy',target:'₹1,200'},{name:'Kotak Inst.',rating:'BUY',rClass:'buy',target:'₹1,080'},{name:'Axis Capital',rating:'HOLD',rClass:'hold',target:'₹1,000'}],
+    consensusTarget:'₹1,106', consensusUpside:'+11.7%',
+    signals:[{type:'BULL',text:'Almost debt-free with 17% ROE — best-in-class capital efficiency'},{type:'BULL',text:'Chronic API portfolio — sticky demand, recurring revenue'},{type:'BULL',text:'PE at 22x is attractive vs pharma peers at 35-55x'},{type:'BEAR',text:'API price erosion risk in commoditized molecules'},{type:'NEUT',text:'CDMO scale-up is key — needs to reach 30%+ revenue share'},{type:'NEUT',text:'Demerger from Glenmark — still establishing independent identity'}],
+    swot:{s:['Near-zero debt — pristine balance sheet','17% ROE — high capital efficiency','Chronic therapy API expertise','US FDA approved facilities'],w:['Small scale vs Divis/Laurus','Post-demerger identity building','Limited CDMO track record','Client concentration risk'],o:['India API self-reliance push','China+1 tailwind for APIs','CDMO outsourcing boom','New molecule pipeline'],t:['API price erosion globally','Regulatory (FDA) inspection risk','Larger peers scaling CDMO','Currency volatility']},
+    insider:{buyCount:2,sellCount:1,netVal:'+₹12 Cr',netColor:'green',buyPct:67,sellPct:33,sentiment:'NEUTRAL',txns:[{name:'Yasir Rawjee',role:'MD & CEO',type:'BUY',val:'₹8 Cr',date:'Mar 2026'},{name:'Executive',role:'CFO',type:'BUY',val:'₹5 Cr',date:'Feb 2026'},{name:'Executive',role:'VP',type:'SELL',val:'₹2 Cr',date:'Jan 2026'}]},
+    tickerItems:[{l:'ALIVUS',v:'₹990',dir:'up',chg:'+0.6%'},{l:'MCAP',v:'₹12.1K Cr',dir:'up',chg:'GROWING'},{l:'REV',v:'₹2.4K Cr',dir:'up',chg:'+18%'},{l:'ROE',v:'17%',dir:'up',chg:'STRONG'},{l:'DEBT',v:'Near Zero',dir:'',chg:'CLEAN'},{l:'PROFIT',v:'₹540 Cr',dir:'up',chg:'+25%'}],
+    tickerSpecial:[{l:'DEBT FREE',v:'PRISTINE B/S',color:'#0f0',vColor:'#0f0'},{l:'API LEADER',v:'CHRONIC THERAPY',color:'cyan',vColor:'yellow'}],
+    sectors:'CHRONIC APIs | CDMO | INTERMEDIATES | R&D'
+  },
+
+  NH: {
+    name:'NARAYANA HRUDAYALAYA LTD', ticker:'NH', sector:'HEALTHCARE / HOSPITALS', verdict:'BUY', verdictColor:'green',
+    price:1625, change:1.2, changeAbs:19.3, mcap:'₹0.33L Cr', mcapUSD:'~$4.0B', w52:'₹1,050 — ₹1,720',
+    pe:'42.6x', pb:'7.9x', evEbitda:'28x', roe:'21.0%', roeColor:'green', roce:'18.5%', roceColor:'green', de:'0.45', divYield:'0.3%', bookVal:'₹205', faceVal:'₹10',
+    promoter:31.5, dii:28.0, fii:22.5, pub:18.0, pledge:'0.00%', govt:'0.00%', fiiTrend:'+1.5% QoQ', fiiDir:'up', diiTrend:'+0.8% QoQ', diiDir:'up',
+    revenue:'₹5,575 Cr', ebitda:'₹1,250 Cr', profit:'₹790 Cr', eps:'₹38.2', fcf:'₹550 Cr', debt:'₹1,800 Cr',
+    revYoY:'+20%', ebitdaYoY:'+25%', profitYoY:'+30%', epsYoY:'+30%', fcfYoY:'+22%', debtYoY:'+15%',
+    capexLatest:'₹500 Cr', capexGrowth:'+25% YoY', capex5Y:'₹1,800 Cr', capex5YUSD:'~$215M deployed',
+    capexBars:[25,35,45,65,85], capexLabels:['FY21','FY22','FY23','FY24','FY25'],
+    capexVals:['₹150Cr','₹220Cr','₹300Cr','₹400Cr','₹500Cr'], capexColors:['green','green','green','cyan','cyan'],
+    capexAlloc:[{name:'New Hospitals',pct:45,color:'cyan'},{name:'Bed Expansion',pct:25,color:'green'},{name:'Medical Equipment',pct:20,color:'yellow'},{name:'Digital/IT',pct:10,color:'orange'}],
+    capexRatios:[{l:'Capex/Revenue',v:'9.0%'},{l:'Capex/EBITDA',v:'40%',c:'yellow'},{l:'FCF Yield',v:'1.7%'},{l:'ROIC',v:'16%',c:'green'}],
+    gbLatest:'₹3,200 Cr', gbLatestColor:'magenta', gbGrowth:'+20% YoY', gbNet:'₹2,100 Cr', gbDepr:'Depreciation: ₹1,100 Cr',
+    gbBars:[20,30,40,55,72], gbLabels:['FY21','FY22','FY23','FY24','FY25'],
+    gbVals:['₹1.2KCr','₹1.6KCr','₹2.0KCr','₹2.6KCr','₹3.2KCr'],
+    gbCAGR:'28%', gb1Y:'20%', gbMult:'2.7x',
+    gbRatios:[{l:'Asset Turnover',v:'1.30x'},{l:'Fixed Asset Turnover',v:'1.74x'},{l:'Depreciation Rate',v:'~7%'},{l:'Bed Utilisation',v:'~72%',c:'green'}],
+    segments:[
+      {icon:'❤️',name:'CARDIAC SCIENCES',rev:'₹1,950 Cr',growth:'+18% YoY',rows:[{l:'Revenue Share',v:'35%'},{l:'Flagship',v:'Core Specialty',c:'cyan'},{l:'Volumes',v:'Growing',c:'green'},{l:'Dr. Shetty Legacy',v:'Pioneer'}],margin:'28%',meterPct:85,meterColor:'green'},
+      {icon:'🏥',name:'ONCOLOGY',rev:'₹835 Cr',growth:'+25% YoY',rows:[{l:'Revenue Share',v:'15%'},{l:'Growth',v:'Fastest Segment',c:'green'},{l:'Capacity',v:'Expanding',c:'cyan'},{l:'TAM',v:'Massive'}],margin:'22%',meterPct:75,meterColor:'cyan'},
+      {icon:'🧠',name:'NEURO & OTHER SPECIALTIES',rev:'₹1,395 Cr',growth:'+20% YoY',rows:[{l:'Revenue Share',v:'25%'},{l:'Specialties',v:'Neuro/Ortho/Gastro'},{l:'Multi-Specialty',v:'Broad base',c:'green'},{l:'Growth',v:'Steady'}],margin:'24%',meterPct:70,meterColor:'green'},
+      {icon:'🏝️',name:'CAYMAN ISLANDS (HCCI)',rev:'₹1,395 Cr',growth:'+15% YoY',rows:[{l:'Revenue Share',v:'25%'},{l:'Type',v:'International',c:'cyan'},{l:'Revenue/Bed',v:'Premium',c:'green'},{l:'Margin',v:'Highest',c:'green'}],margin:'35%',meterPct:90,meterColor:'green'}
+    ],
+    revMix:[{name:'Cardiac',pct:35,color:'green'},{name:'Cayman',pct:25,color:'cyan'},{name:'Neuro/Other',pct:25,color:'yellow'},{name:'Oncology',pct:15,color:'orange'}],
+    ebitdaMix:[{name:'Cayman',pct:38,color:'cyan'},{name:'Cardiac',pct:30,color:'green'},{name:'Neuro/Other',pct:20,color:'yellow'},{name:'Oncology',pct:12,color:'orange'}],
+    projections:[
+      {horizon:'3Y (2029)',target:'₹2,200-2,600',upside:'+35-60%',cagr:'11-17%',drivers:'Bed expansion, oncology ramp, payer mix optimization',conf:70,confColor:'green'},
+      {horizon:'5Y (2031)',target:'₹3,200-4,200',upside:'+97-158%',cagr:'15-21%',drivers:'New hospitals, Cayman expansion, 8K beds target',conf:60,confColor:'green'},
+      {horizon:'10Y (2036)',target:'₹6,000-9,000',upside:'+269-454%',cagr:'14-19%',drivers:'India healthcare boom, international expansion',conf:45,confColor:'yellow'},
+      {horizon:'15Y (2041)',target:'₹10,000-16,000',upside:'+515-885%',cagr:'13-17%',drivers:'India health infra build-out, aging population',conf:35,confColor:'orange'}
+    ],
+    projChart:[{label:'NOW',val:'₹1,625',pct:10,color:'cyan'},{label:'3Y',val:'₹2,400',pct:15,color:'green'},{label:'5Y',val:'₹3,700',pct:23,color:'green'},{label:'10Y',val:'₹7,500',pct:47,color:'yellow'},{label:'15Y',val:'₹13,000',pct:81,color:'orange'}],
+    tam:[{val:'$120B',label:'INDIA HEALTHCARE TAM',share:'NH Share: ~0.5%',shareColor:'yellow'},{val:'$3B',label:'MEDICAL TOURISM',share:'Cayman Leader',shareColor:'green'},{val:'$15B',label:'INDIA HOSPITAL MARKET',share:'Top 5 Player',shareColor:'cyan'}],
+    gdp:[{l:'Healthcare Spend',v:'3% → 5% GDP',c:'green'},{l:'Insurance Penetration',v:'Rising Fast',c:'cyan'},{l:'Ayushman Bharat',v:'500M covered'}],
+    moat:[{l:'Affordable Healthcare',v:'★★★★★'},{l:'Cardiac Leadership',v:'★★★★★'},{l:'Cayman Operations',v:'★★★★☆'},{l:'Brand/Trust',v:'★★★★☆'}],
+    conviction:[{name:'Cardiac Care',pct:90,color:'green'},{name:'Oncology Growth',pct:75,color:'cyan'},{name:'International',pct:80,color:'green'},{name:'Expansion',pct:70,color:'yellow'}],
+    riskLevel:'MODERATE', riskActive:3,
+    risks:[{l:'Acquisition Integration',v:'MED',t:'hold'},{l:'Debt from Expansion',v:'MED',t:'hold'},{l:'Doctor Retention',v:'MED',t:'hold'},{l:'Regulatory Changes',v:'LOW',t:'info'},{l:'Insurance Pricing',v:'LOW',t:'info'},{l:'Competition (Apollo/Max)',v:'MED',t:'hold'}],
+    catalysts:[{date:'FY26',dateColor:'cyan',tag:'HOT',tagClass:'hot',text:'New hospital additions — 500+ beds coming online'},{date:'FY26',dateColor:'green',tag:'NEW',tagClass:'buy',text:'Oncology becoming major revenue contributor'},{date:'FY27',dateColor:'yellow',tag:'TGT',tagClass:'info',text:'8,000 operational beds target'},{date:'2028',dateColor:'green',tag:'GOAL',tagClass:'buy',text:'Revenue ₹10,000 Cr milestone — affordable healthcare scale'}],
+    peers:[{name:'NARAYANA H ●',mcap:'₹0.33L',pe:'42x',roe:'21%',roeColor:'green',highlight:true},{name:'APOLLO HOSP',mcap:'₹0.98L',pe:'65x',roe:'15%',roeColor:'green'},{name:'MAX HEALTH',mcap:'₹0.85L',pe:'70x',roe:'12%',roeColor:'green'},{name:'FORTIS',mcap:'₹0.45L',pe:'55x',roe:'10%',roeColor:'yellow'},{name:'ASTER DM',mcap:'₹0.22L',pe:'30x',roe:'14%',roeColor:'green'}],
+    analysts:[{name:'Morgan Stanley',rating:'BUY',rClass:'buy',target:'₹1,900'},{name:'Goldman Sachs',rating:'BUY',rClass:'buy',target:'₹1,850'},{name:'CLSA',rating:'BUY',rClass:'buy',target:'₹1,800'},{name:'Jefferies',rating:'HOLD',rClass:'hold',target:'₹1,650'},{name:'Kotak Inst.',rating:'BUY',rClass:'buy',target:'₹1,900'}],
+    consensusTarget:'₹1,820', consensusUpside:'+12.0%',
+    signals:[{type:'BULL',text:'21% ROE — best among hospital peers, superior capital efficiency'},{type:'BULL',text:'Cayman operations generating 35% margins — international moat'},{type:'BULL',text:'Oncology fastest-growing segment — expanding addressable market'},{type:'BEAR',text:'Debt rising with expansion — D/E at 0.45 needs monitoring'},{type:'BEAR',text:'PE at 42x — premium valuation needs sustained growth'},{type:'NEUT',text:'Dr. Devi Shetty brand — succession planning important long-term'}],
+    swot:{s:['Affordable healthcare pioneer — cost leadership','21% ROE — best in hospitals','Cayman HCCI — 35% margin international ops','42 facilities across India + Cayman'],w:['Rising debt with expansion','PE at 42x — premium priced','Concentrated in South India','Lower promoter holding (31.5%)'],o:['India healthcare spend 3% → 5% GDP','Insurance penetration rising','Medical tourism $3B TAM','Oncology segment scaling'],t:['Apollo/Max competition intensifying','Doctor attrition risk','Regulatory/pricing caps','Global recession impacting medical tourism']},
+    insider:{buyCount:4,sellCount:1,netVal:'+₹35 Cr',netColor:'green',buyPct:80,sellPct:20,sentiment:'BULLISH',txns:[{name:'Devi Prasad Shetty',role:'Chairman & Founder',type:'BUY',val:'₹22 Cr',date:'Mar 2026'},{name:'Viren Shetty',role:'Vice Chairman',type:'BUY',val:'₹10 Cr',date:'Feb 2026'},{name:'Executive',role:'CFO',type:'SELL',val:'₹3 Cr',date:'Jan 2026'}]},
+    tickerItems:[{l:'NH',v:'₹1,625',dir:'up',chg:'+1.2%'},{l:'MCAP',v:'₹33.2K Cr',dir:'up',chg:'+30%'},{l:'REV',v:'₹5.6K Cr',dir:'up',chg:'+20%'},{l:'BEDS',v:'5,554',dir:'up',chg:'→8K'},{l:'ROE',v:'21%',dir:'up',chg:'BEST'},{l:'PROFIT',v:'₹790 Cr',dir:'up',chg:'+30%'}],
+    tickerSpecial:[{l:'CARDIAC',v:'PIONEER — DR SHETTY',color:'#0f0',vColor:'#0f0'},{l:'CAYMAN',v:'35% MARGIN',color:'cyan',vColor:'yellow'}],
+    sectors:'CARDIAC | ONCOLOGY | MULTI-SPECIALTY | INTERNATIONAL'
+  },
+
+  CMSINFO: {
+    name:'CMS INFO SYSTEMS LTD', ticker:'CMSINFO', sector:'CASH MANAGEMENT / FINTECH', verdict:'BUY', verdictColor:'green',
+    price:284, change:0.5, changeAbs:1.4, mcap:'₹0.047L Cr', mcapUSD:'~$560M', w52:'₹210 — ₹340',
+    pe:'14.5x', pb:'2.0x', evEbitda:'10x', roe:'16.0%', roeColor:'green', roce:'20.0%', roceColor:'green', de:'0.08', divYield:'1.5%', bookVal:'₹142', faceVal:'₹1',
+    promoter:0.0, dii:32.0, fii:28.5, pub:39.5, pledge:'0.00%', govt:'0.00%', fiiTrend:'+0.5% QoQ', fiiDir:'up', diiTrend:'+1.0% QoQ', diiDir:'up',
+    revenue:'₹2,473 Cr', ebitda:'₹620 Cr', profit:'₹322 Cr', eps:'₹19.6', fcf:'₹280 Cr', debt:'₹80 Cr',
+    revYoY:'+12%', ebitdaYoY:'+15%', profitYoY:'+18%', epsYoY:'+18%', fcfYoY:'+14%', debtYoY:'Near Zero',
+    capexLatest:'₹200 Cr', capexGrowth:'+10% YoY', capex5Y:'₹750 Cr', capex5YUSD:'~$90M deployed',
+    capexBars:[35,45,55,65,78], capexLabels:['FY21','FY22','FY23','FY24','FY25'],
+    capexVals:['₹100Cr','₹130Cr','₹160Cr','₹180Cr','₹200Cr'], capexColors:['green','green','green','cyan','cyan'],
+    capexAlloc:[{name:'Cash Mgmt Infra',pct:40,color:'cyan'},{name:'Managed Services',pct:30,color:'green'},{name:'Technology/ATMs',pct:20,color:'yellow'},{name:'Others',pct:10,color:'orange'}],
+    capexRatios:[{l:'Capex/Revenue',v:'8.1%'},{l:'Capex/EBITDA',v:'32%',c:'green'},{l:'FCF Yield',v:'6.0%',c:'green'},{l:'ROIC',v:'18%',c:'green'}],
+    gbLatest:'₹1,100 Cr', gbLatestColor:'magenta', gbGrowth:'+12% YoY', gbNet:'₹720 Cr', gbDepr:'Depreciation: ₹380 Cr',
+    gbBars:[25,35,45,58,70], gbLabels:['FY21','FY22','FY23','FY24','FY25'],
+    gbVals:['₹500Cr','₹650Cr','₹800Cr','₹980Cr','₹1.1KCr'],
+    gbCAGR:'22%', gb1Y:'12%', gbMult:'2.2x',
+    gbRatios:[{l:'Asset Turnover',v:'1.65x',c:'green'},{l:'Fixed Asset Turnover',v:'2.25x',c:'green'},{l:'Depreciation Rate',v:'~12%',c:'yellow'},{l:'Utilisation',v:'~85%',c:'green'}],
+    segments:[
+      {icon:'💰',name:'CASH MANAGEMENT',rev:'₹1,485 Cr',growth:'+10% YoY',rows:[{l:'Revenue Share',v:'60%'},{l:'ATM Network',v:'Largest in India',c:'green'},{l:'Banks Served',v:'All Major',c:'cyan'},{l:'Market Share',v:'~45%',c:'green'}],margin:'28%',meterPct:85,meterColor:'green'},
+      {icon:'🖥️',name:'MANAGED SERVICES',rev:'₹620 Cr',growth:'+18% YoY',rows:[{l:'Revenue Share',v:'25%'},{l:'Type',v:'ATM Managed',c:'cyan'},{l:'Growth Driver',v:'Outsourcing Trend',c:'green'},{l:'Margins',v:'Expanding'}],margin:'25%',meterPct:75,meterColor:'cyan'},
+      {icon:'💳',name:'CARDS BUSINESS',rev:'₹245 Cr',growth:'+15% YoY',rows:[{l:'Revenue Share',v:'10%'},{l:'Services',v:'Card Personalization'},{l:'PIN Mailers',v:'40M+/yr',c:'cyan'},{l:'Growth',v:'Digital Shift'}],margin:'22%',meterPct:60,meterColor:'yellow'},
+      {icon:'🔐',name:'REMOTE MONITORING & OTHERS',rev:'₹123 Cr',growth:'+25% YoY',rows:[{l:'Revenue Share',v:'5%'},{l:'IoT/Tech',v:'Growing Fast',c:'green'},{l:'Type',v:'Value-Added'},{l:'Potential',v:'High',c:'cyan'}],margin:'30%',meterPct:65,meterColor:'green'}
+    ],
+    revMix:[{name:'Cash Mgmt',pct:60,color:'green'},{name:'Managed Svcs',pct:25,color:'cyan'},{name:'Cards',pct:10,color:'yellow'},{name:'Others',pct:5,color:'orange'}],
+    ebitdaMix:[{name:'Cash Mgmt',pct:55,color:'green'},{name:'Managed Svcs',pct:25,color:'cyan'},{name:'Others',pct:12,color:'orange'},{name:'Cards',pct:8,color:'yellow'}],
+    projections:[
+      {horizon:'3Y (2029)',target:'₹400-480',upside:'+41-69%',cagr:'12-19%',drivers:'Managed services growth, ATM outsourcing wave',conf:72,confColor:'green'},
+      {horizon:'5Y (2031)',target:'₹550-700',upside:'+94-147%',cagr:'14-20%',drivers:'Digital + cash coexistence, IoT expansion',conf:62,confColor:'green'},
+      {horizon:'10Y (2036)',target:'₹1,000-1,500',upside:'+252-428%',cagr:'13-18%',drivers:'India cash infrastructure + digital overlay',conf:45,confColor:'yellow'},
+      {horizon:'15Y (2041)',target:'₹1,500-2,500',upside:'+428-780%',cagr:'12-16%',drivers:'Essential infrastructure — cash + digital hybrid',conf:35,confColor:'orange'}
+    ],
+    projChart:[{label:'NOW',val:'₹284',pct:11,color:'cyan'},{label:'3Y',val:'₹440',pct:18,color:'green'},{label:'5Y',val:'₹625',pct:25,color:'green'},{label:'10Y',val:'₹1,250',pct:50,color:'yellow'},{label:'15Y',val:'₹2,000',pct:80,color:'orange'}],
+    tam:[{val:'$8B',label:'INDIA CASH MGMT TAM',share:'CMS Share: ~45%',shareColor:'green'},{val:'$3B',label:'ATM MANAGED SERVICES',share:'Market Leader',shareColor:'green'},{val:'$2B',label:'CARDS & DIGITAL',share:'Growing Niche',shareColor:'cyan'}],
+    gdp:[{l:'Cash in Circulation',v:'Growing 10% CAGR',c:'green'},{l:'ATM Count India',v:'2.5L+ ATMs'},{l:'Financial Inclusion',v:'Accelerating',c:'cyan'}],
+    moat:[{l:'Market Dominance',v:'★★★★★'},{l:'Network Scale',v:'★★★★★'},{l:'Switching Cost',v:'★★★★☆'},{l:'Regulatory Barrier',v:'★★★★☆'}],
+    conviction:[{name:'Cash Mgmt',pct:90,color:'green'},{name:'Managed Svcs',pct:78,color:'cyan'},{name:'Dividend',pct:72,color:'green'},{name:'Growth',pct:60,color:'yellow'}],
+    riskLevel:'LOW', riskActive:2,
+    risks:[{l:'Cashless Economy Risk',v:'LOW',t:'info'},{l:'Competition (SIS/AGS)',v:'LOW',t:'info'},{l:'Bank Consolidation',v:'LOW',t:'info'},{l:'Technology Disruption',v:'MED',t:'hold'},{l:'Wage Inflation',v:'MED',t:'hold'},{l:'Regulatory Changes',v:'LOW',t:'info'}],
+    catalysts:[{date:'FY26',dateColor:'cyan',tag:'HOT',tagClass:'hot',text:'Managed services growing 18% — bank outsourcing trend'},{date:'FY26',dateColor:'green',tag:'NEW',tagClass:'buy',text:'Remote monitoring & IoT — new revenue stream'},{date:'FY27',dateColor:'yellow',tag:'TGT',tagClass:'info',text:'Revenue ₹3,000 Cr target'},{date:'2028',dateColor:'green',tag:'GOAL',tagClass:'buy',text:'Dividend payout increase — shareholder returns focus'}],
+    peers:[{name:'CMS INFO ●',mcap:'₹4.7K',pe:'14.5x',roe:'16%',roeColor:'green',highlight:true},{name:'SIS LTD',mcap:'₹8.5K',pe:'22x',roe:'12%',roeColor:'green'},{name:'AGS TRANSACT',mcap:'₹2.8K',pe:'18x',roe:'10%',roeColor:'yellow'},{name:'RADIANT CASH',mcap:'₹1.5K',pe:'12x',roe:'14%',roeColor:'green'},{name:'HITACHI PAY',mcap:'₹3.2K',pe:'20x',roe:'11%',roeColor:'yellow'}],
+    analysts:[{name:'ICICI Securities',rating:'BUY',rClass:'buy',target:'₹350'},{name:'HDFC Securities',rating:'BUY',rClass:'buy',target:'₹340'},{name:'Motilal Oswal',rating:'BUY',rClass:'buy',target:'₹360'},{name:'Kotak Inst.',rating:'BUY',rClass:'buy',target:'₹330'},{name:'Axis Capital',rating:'HOLD',rClass:'hold',target:'₹300'}],
+    consensusTarget:'₹336', consensusUpside:'+18.3%',
+    signals:[{type:'BULL',text:'45% market share in cash management — near-monopoly in India'},{type:'BULL',text:'PE at 14.5x with 16% ROE — deeply undervalued vs quality'},{type:'BULL',text:'Cash in circulation still growing 10% CAGR despite UPI'},{type:'BEAR',text:'Perception of cashless economy threat — sentiment overhang'},{type:'NEUT',text:'Zero promoter holding — PE/institutional ownership driven'},{type:'NEUT',text:'Managed services growing 18% — diversification from pure cash'}],
+    swot:{s:['#1 cash management company in India','45% market share — near monopoly','20% ROCE — high capital efficiency','Near-zero debt — strong balance sheet'],w:['Zero promoter holding','Cash narrative risk','Limited international presence','Wage inflation pressure'],o:['ATM outsourcing wave by banks','Cash in circulation growing 10%+','IoT & remote monitoring','Financial inclusion — rural India'],t:['Cashless economy perception','UPI adoption accelerating','Competition from SIS/AGS','Regulatory changes on cash handling']},
+    insider:{buyCount:0,sellCount:2,netVal:'-₹8 Cr',netColor:'red',buyPct:0,sellPct:100,sentiment:'NEUTRAL',txns:[{name:'Rajiv Kaul',role:'Promoter/VC',type:'SELL',val:'₹5 Cr',date:'Mar 2026'},{name:'Executive',role:'COO',type:'SELL',val:'₹3 Cr',date:'Feb 2026'}]},
+    tickerItems:[{l:'CMSINFO',v:'₹284',dir:'up',chg:'+0.5%'},{l:'MCAP',v:'₹4.7K Cr',dir:'up',chg:'VALUE'},{l:'REV',v:'₹2.5K Cr',dir:'up',chg:'+12%'},{l:'SHARE',v:'45%',dir:'',chg:'DOMINANT'},{l:'ROE',v:'16%',dir:'up',chg:'STRONG'},{l:'PE',v:'14.5x',dir:'',chg:'CHEAP'}],
+    tickerSpecial:[{l:'CASH KING',v:'#1 IN INDIA',color:'#0f0',vColor:'#0f0'},{l:'DIVIDEND',v:'1.5% YIELD',color:'cyan',vColor:'yellow'}],
+    sectors:'CASH MANAGEMENT | ATM SERVICES | CARDS | IoT'
   }
 };
 
@@ -3130,6 +3449,7 @@ function generateBasicStock(info) {
     consensusTarget:'—', consensusUpside:'—',
     signals:[{type:'NEUT',text:'Detailed signals not available — this stock has basic data only'},{type:'NEUT',text:'Search for stocks with FULL DATA badge for comprehensive analysis'}],
     swot:{s:['Data not available for this stock'],w:['Full analysis requires detailed data'],o:['Search for FULL DATA stocks for projections'],t:['Basic data view only']},
+    insider:null,
     tickerItems:[{l:info.ticker,v:'₹'+p,dir:grn?'up':'down',chg:(grn?'+':'')+ch+'%'}],
     tickerSpecial:[{l:'BASIC DATA',v:'FULL ANALYSIS NOT AVAILABLE',color:'yellow',vColor:'orange'}],
     sectors:info.sector
@@ -3154,10 +3474,36 @@ function selectStock(key, isDetailed) {
     overlay.style.display = 'none';
     currentBasePrice = s.price;
     window.scrollTo({top:0, behavior:'smooth'});
+    startLiveFeed(key);
   }, 700);
 }
 
 // ===== RENDER FUNCTION =====
+function renderInsider(ins) {
+  var h = '<div style="display:flex; justify-content:space-between; margin-bottom:6px;">';
+  h += '<div style="text-align:center; flex:1;"><div style="color:var(--green); font-size:11px; font-weight:700;">'+ins.buyCount+'</div><div style="color:var(--gray); font-size:7px; letter-spacing:1px;">BUYS (6M)</div></div>';
+  h += '<div style="text-align:center; flex:1;"><div style="color:var(--red); font-size:11px; font-weight:700;">'+ins.sellCount+'</div><div style="color:var(--gray); font-size:7px; letter-spacing:1px;">SELLS (6M)</div></div>';
+  h += '<div style="text-align:center; flex:1;"><div style="color:var(--'+ins.netColor+'); font-size:11px; font-weight:700;">'+ins.netVal+'</div><div style="color:var(--gray); font-size:7px; letter-spacing:1px;">NET (₹ Cr)</div></div>';
+  h += '</div>';
+  h += '<div style="background:var(--panel-bg); border:1px solid var(--border); border-radius:3px; padding:4px; margin-bottom:4px;">';
+  h += '<div style="display:flex; height:6px; border-radius:2px; overflow:hidden;"><div style="width:'+ins.buyPct+'%; background:var(--green);"></div><div style="width:'+ins.sellPct+'%; background:var(--red);"></div></div>';
+  h += '<div style="display:flex; justify-content:space-between; margin-top:2px;"><span style="color:var(--green); font-size:7px;">BUY '+ins.buyPct+'%</span><span style="color:var(--red); font-size:7px;">SELL '+ins.sellPct+'%</span></div>';
+  h += '</div>';
+  ins.txns.forEach(function(t) {
+    var tagClass = t.type==='BUY' ? 'buy' : 'hot';
+    var valColor = t.type==='BUY' ? 'green' : 'red';
+    h += '<div style="display:flex; justify-content:space-between; align-items:center; padding:2px 0; border-bottom:1px solid var(--border);">';
+    h += '<div style="flex:2;"><div style="color:var(--white); font-size:8px;">'+t.name+'</div><div style="color:var(--gray); font-size:7px;">'+t.role+'</div></div>';
+    h += '<div style="flex:1; text-align:center;"><span class="tag tag-'+tagClass+'" style="font-size:7px; padding:1px 4px;">'+t.type+'</span></div>';
+    h += '<div style="flex:1; text-align:right;"><div style="color:var(--'+valColor+'); font-size:8px;">'+t.val+'</div><div style="color:var(--gray); font-size:7px;">'+t.date+'</div></div>';
+    h += '</div>';
+  });
+  var sentColor = ins.sentiment==='BULLISH' ? 'green' : ins.sentiment==='BEARISH' ? 'red' : 'yellow';
+  h += '<div style="margin-top:4px; padding:3px; background:var(--panel-bg); border:1px solid var(--border); border-radius:3px; text-align:center;">';
+  h += '<span style="color:var(--'+sentColor+'); font-size:9px; font-weight:700; letter-spacing:1px;">INSIDER SENTIMENT: '+ins.sentiment+'</span></div>';
+  return h;
+}
+
 function renderStock(s) {
   document.title = 'COMPANY X-RAY — ' + s.name;
 
@@ -3169,6 +3515,7 @@ function renderStock(s) {
     <span>CHG: <span class="val" style="color:var(--${s.change>=0?'green':'red'})">${s.change>=0?'+':''}${s.change}%</span></span>
     <span>MCAP: <span class="val">${s.mcap}</span></span>
     <span>YOY GROWTH: <span class="val" style="color:var(--${s.revYoY.includes('-')?'red':'green'}); background:rgba(${s.revYoY.includes('-')?'255,51,51':'0,255,65'},0.15); padding:1px 6px; border-radius:2px;">${s.revYoY}</span></span>
+    <span id="marketStatus" style="font-size:9px;"></span>
     <span class="clock" id="clock">00:00:00</span>`;
 
   // Ticker
@@ -3417,6 +3764,11 @@ function renderStock(s) {
         <div class="sub-panel" style="border-color:var(--cyan-dim);"><div style="color:var(--cyan); font-size:9px; font-weight:700; letter-spacing:1px;">OPPORTUNITIES</div><div style="color:var(--white); font-size:9px; margin-top:3px; line-height:1.5;">${s.swot.o.map(x=>'• '+x).join('<br>')}</div></div>
         <div class="sub-panel" style="border-color:var(--yellow-dim);"><div style="color:var(--yellow); font-size:9px; font-weight:700; letter-spacing:1px;">THREATS</div><div style="color:var(--white); font-size:9px; margin-top:3px; line-height:1.5;">${s.swot.t.map(x=>'• '+x).join('<br>')}</div></div>
       </div>
+    </div>
+    <!-- INSIDER TRADING -->
+    <div class="panel" style="margin-top:6px;">
+      <div class="panel-title">◆ INSIDER BUYING / SELLING</div>
+      ${s.insider ? renderInsider(s.insider) : '<div style="color:var(--gray); font-size:9px; text-align:center; padding:8px;">No insider transaction data available</div>'}
     </div>`;
 
   // Bottom bar
@@ -3427,7 +3779,11 @@ function renderStock(s) {
     <span id="bottomClock"></span>`;
 
   updateClock();
+  updateMarketStatus();
 }
+
+// Auto-start live feed for default stock (RELIANCE)
+startLiveFeed('RELIANCE');
 </script>
 
 </body>
